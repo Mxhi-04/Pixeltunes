@@ -1,0 +1,133 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'DSEG7Classic';
+  src: url('/fonts/DSEG7Classic-BoldItalic.woff2') format('woff2'),
+       url('/fonts/DSEG7Classic-BoldItalic.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'DSEG14Classic';
+  src: url('/fonts/DSEG14Classic-BoldItalic.woff2') format('woff2'),
+       url('/fonts/DSEG14Classic-BoldItalic.ttf') format('truetype');
+  font-weight: bold;
+  font-style: italic;
+  font-display: swap;
+}
+
+html, body, #root, #root * {
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAAl0lEQVR4nK2SbQqAIAyG10snsF92m8JOXdBt8lddoRAaiKQu9YXJvniYU9LK3M6okeCO41ypFRTstILCD1pAESZqofhK1kARK5RCkSqWQJFr+AuFpOkPtI8VxmGhEiEFsdfWsRHRrJWZskStzO3EV+LYzwX9Uwrc82TvFFnZa9sZ7MdJ5aasfmUt2Z0A4u9VDIx+G+lOQz10FV9p/DLtUQAAAABJRU5ErkJggg==') 0 0, url('/cursors/pixel-cursor.png') 0 0, default !important;
+}
+
+button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cursor-pointer, .cursor-pointer *, [type="button"], [type="submit"], input[type="range"], .app-no-drag button {
+  cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAAo0lEQVR4nK2UYQqDMAyFY/AE3a94G6WeejJvM3/NKzgyVwm2aErygRDFPF/yqA2coBC3VC/r1IAFCnGTSHEtqPhI7ypYC4IzbW2DKjQK8QigFEzaoyY05IfvzxP4uko1vXcXGsqbUoMGEhMi76F7jGDglU143k0NJHq5/o3s4DLH6pL+4RyheLlEq0C3mxiWdZozQQ+XxaNnES2exdpfVhqX6y8dy+YFzJb6OQAAAABJRU5ErkJggg==') 5 0, url('/cursors/pixel-pointer.png') 5 0, pointer !important;
+}
+
+@layer base {
+  body {
+    background-color: #0e0a1f;
+    font-family: 'Silkscreen', 'Press Start 2P', monospace;
+    overflow-x: hidden;
+  }
+}
+
+/* Click Spark Burst Animation (matching reference image) */
+@keyframes pixelSparkFade {
+  0% {
+    transform: scale(0.6);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.4);
+    opacity: 0;
+  }
+}
+
+.animate-pixel-spark {
+  animation: pixelSparkFade 0.22s steps(4) forwards;
+}
+
+/* Electron Frameless Window Drag Region */
+.app-drag {
+  -webkit-app-region: drag;
+}
+
+.app-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Retro CRT Scanlines Effect */
+.crt-overlay {
+  background: linear-gradient(
+    rgba(18, 16, 16, 0) 50%, 
+    rgba(0, 0, 0, 0.07) 50%
+  ), linear-gradient(
+    90deg,
+    rgba(255, 0, 0, 0.015),
+    rgba(0, 255, 0, 0.005),
+    rgba(0, 0, 255, 0.015)
+  );
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+}
+
+/* Pixel Border Utility Classes */
+.pixel-border-outer {
+  border: 4px solid #191244;
+  box-shadow: 
+    0 0 0 2px #fffdf5,
+    6px 6px 0px 2px rgba(16, 11, 46, 0.8);
+}
+
+.pixel-border-inner {
+  border: 3px solid #191244;
+}
+
+.pixel-box-shadow {
+  box-shadow: 3px 3px 0px 0px #191244;
+}
+
+.pixel-box-shadow-sm {
+  box-shadow: 2px 2px 0px 0px #191244;
+}
+
+.pixel-btn {
+  transition: all 0.05s ease-in-out;
+  box-shadow: 3px 3px 0px 0px #191244;
+}
+
+.pixel-btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0px 0px #191244;
+}
+
+.pixel-btn:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0px 0px #191244;
+}
+
+/* Custom Pixel Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #191244;
+}
+::-webkit-scrollbar-thumb {
+  background: #fec5db;
+  border: 2px solid #191244;
+}
+
