@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getQueue, playTrack, playPlaylist, getUserPlaylists, getPlaylistTracks } from '../services/spotify';
+import { getQueue, playTrack, playPlaylist } from '../services/spotify';
 import { playClickSound } from '../services/soundEffects';
 
 interface RetroQueueViewProps {
@@ -17,23 +17,8 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
   onTrackPlayed,
   currentTrackTitle,
 }) => {
-  const [queueTracks, setQueueTracks] = useState<any[]>(() => {
-    try {
-      const cached = localStorage.getItem('pixeltunes_cached_playlist');
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch {}
-    return [];
-  });
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(() => {
-    try {
-      const cached = localStorage.getItem('pixeltunes_last_spotify_track');
-      if (cached) return JSON.parse(cached);
-    } catch {}
-    return null;
-  });
+  const [queueTracks, setQueueTracks] = useState<any[]>([]);
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [activePlayingUri, setActivePlayingUri] = useState<string | null>(null);
@@ -49,25 +34,9 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
         } catch {}
       }
 
-      if (data.queue && data.queue.length > 0) {
+      // Display ONLY the songs that are shown in the queue in Spotify
+      if (data.queue) {
         setQueueTracks(data.queue);
-        try {
-          localStorage.setItem('pixeltunes_cached_playlist', JSON.stringify(data.queue));
-        } catch {}
-      } else {
-        // If Spotify temporarily reports an empty queue during playback transition,
-        // keep the existing/cached tracks so the UI doesn't glitch or flash "PLAYLIST IS EMPTY"
-        setQueueTracks((prev) => {
-          if (prev && prev.length > 0) return prev;
-          try {
-            const cached = localStorage.getItem('pixeltunes_cached_playlist');
-            if (cached) {
-              const parsed = JSON.parse(cached);
-              if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-            }
-          } catch {}
-          return [];
-        });
       }
     } catch (e) {
       console.error('Failed to fetch Spotify queue:', e);
@@ -82,33 +51,12 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
     fetchQueue();
   }, [fetchQueue, currentTrackTitle]);
 
-  // Fallback: if queue is empty on initial load, fetch user's first playlist
-  useEffect(() => {
-    if (!isSpotifyConnected) return;
-    if (queueTracks.length === 0) {
-      (async () => {
-        try {
-          const playlists = await getUserPlaylists(1);
-          if (playlists && playlists.length > 0 && playlists[0]?.id) {
-            const tracks = await getPlaylistTracks(playlists[0].id, 25);
-            if (tracks && tracks.length > 0) {
-              setQueueTracks((prev) => (prev.length === 0 ? tracks : prev));
-              try {
-                localStorage.setItem('pixeltunes_cached_playlist', JSON.stringify(tracks));
-              } catch {}
-            }
-          }
-        } catch {}
-      })();
-    }
-  }, [isSpotifyConnected, queueTracks.length]);
-
   // Periodic polling to keep playlist in sync with Spotify
   useEffect(() => {
     if (!isSpotifyConnected) return;
     const interval = setInterval(() => {
       fetchQueue();
-    }, 3500);
+    }, 3000);
     return () => clearInterval(interval);
   }, [isSpotifyConnected, fetchQueue]);
 
@@ -126,27 +74,32 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
       localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(track));
     } catch {}
 
-    // Find subsequent tracks in current playlist to pass to Spotify so queue is preserved
+    // Find subsequent tracks in current playlist to show and queue
     const trackIdx = queueTracks.findIndex(
       (t) => (t.id && t.id === track.id) || (t.uri && t.uri === track.uri)
     );
-    let remainingUris: string[] = [];
-    if (trackIdx !== -1) {
-      remainingUris = queueTracks
-        .slice(trackIdx + 1)
-        .map((t) => t.uri)
-        .filter(Boolean);
+    const subsequentTracks = trackIdx !== -1 ? queueTracks.slice(trackIdx + 1) : [];
+    // Immediately show only the songs after the selected song
+    if (subsequentTracks.length > 0) {
+      setQueueTracks(subsequentTracks);
     }
+    const remainingUris = subsequentTracks.map((t) => t.uri).filter(Boolean);
 
     const success = await playTrack(track.uri, undefined, remainingUris);
     if (success) {
       setTimeout(() => {
         setStatusMsg(null);
         fetchQueue();
-      }, 1500);
+      }, 1200);
+      setTimeout(() => {
+        fetchQueue();
+      }, 2500);
     } else {
-      setStatusMsg('Active device needed');
-      setTimeout(() => setStatusMsg(null), 2200);
+      setStatusMsg('Starting playback...');
+      setTimeout(() => {
+        setStatusMsg(null);
+        fetchQueue();
+      }, 2000);
     }
   };
 

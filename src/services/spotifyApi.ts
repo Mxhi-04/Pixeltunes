@@ -446,10 +446,13 @@ export async function playTrack(
       } catch (e) {}
     }
 
+    // Wait 300ms for Spotify desktop app to load and register the track
+    await new Promise((r) => setTimeout(r, 300));
+
     // 2. Resolve active or computer device
     let devices = await getDevices();
     if (devices.length === 0) {
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 300));
       devices = await getDevices();
     }
 
@@ -464,23 +467,29 @@ export async function playTrack(
     // 3. If target is inactive, activate device
     if (target && !target.is_active && targetId) {
       await transferPlayback(targetId, true).catch(() => {});
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 250));
     }
 
     const query = targetId ? `?device_id=${targetId}` : '';
-    
+
+    // 4. Send resume play (with remaining queue if available)
     let body: any = {};
     if (contextUri) {
       body = { context_uri: contextUri, offset: { uri } };
     } else if (remainingUris && remainingUris.length > 0) {
       body = { uris: [uri, ...remainingUris.slice(0, 49)] };
-    } else {
-      body = { uris: [uri] };
     }
 
-    const res = await spotifyRequest('PUT', `/me/player/play${query}`, {
-      body,
-    });
+    let res = await spotifyRequest(
+      'PUT',
+      `/me/player/play${query}`,
+      Object.keys(body).length > 0 ? { body } : undefined
+    );
+    if (!res.ok && res.status !== 204) {
+      // Fallback simple resume
+      res = await spotifyRequest('PUT', `/me/player/play${query}`);
+    }
+
     return res.ok || res.status === 204;
   } catch (e) {
     console.error('Spotify play track error:', e);
