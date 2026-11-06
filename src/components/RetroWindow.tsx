@@ -952,24 +952,32 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             <div className="space-y-1.5 pt-1 border-t border-[#191244]/20">
               {/* 5-Discrete Pixel Volume Controls & Auxiliary Buttons */}
               <div className="flex items-center gap-2">
-                {/* Pixel Speaker Icon Button */}
+                {/* Pixel Speaker Icon Button (Framed Retro Button Matching Toolbar) */}
                 <button
                   type="button"
                   onClick={handleToggleMute}
                   title={isMuted || volume === 0 ? "Unmute" : "Mute"}
-                  className="hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center p-0.5 outline-none focus:outline-none"
+                  className={`p-1.5 border shadow-[1px_1px_0px_#191244] cursor-pointer rounded-[2px] transition-transform active:translate-y-0.5 flex items-center justify-center outline-none focus:outline-none ${
+                    isMuted || volume === 0
+                      ? 'bg-[#fffdf5] opacity-60 hover:opacity-100 hover:bg-[#fec5db]'
+                      : 'bg-[#fffdf5] hover:bg-[#fec5db]'
+                  }`}
+                  style={{
+                    borderColor: theme.primaryBorder,
+                    color: theme.textColor,
+                  }}
                 >
                   <PixelSpeakerIcon
                     level={activeVolumeBlocks}
                     isMuted={isMuted || volume === 0}
-                    rimColor={theme.accentPink}
-                    outlineColor={theme.primaryBorder}
+                    className="w-4 h-3 text-[#191244]"
+                    fill={theme.textColor}
                   />
                 </button>
 
                 {/* 5-Segment Pixel Volume Block Bar */}
                 <div
-                  className="flex items-center gap-[3px] p-[2.5px] rounded-[3px] border-2 shadow-[1px_1px_0px_#191244]"
+                  className="flex items-center gap-[3px] p-[2.5px] rounded-[2px] border shadow-[1px_1px_0px_#191244]"
                   style={{
                     backgroundColor: '#fffdf5',
                     borderColor: theme.primaryBorder,
