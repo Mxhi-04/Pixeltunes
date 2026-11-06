@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { login as authLogin, getAccessToken } from '../services/spotify';
+import React, { useState, useEffect, useRef } from 'react';
+import { login as authLogin, getAccessToken, validateSpotifyToken } from '../services/spotify';
 import { playClickSound, playPlaySound } from '../services/soundEffects';
 
 interface QuickConnectModalProps {
@@ -17,34 +17,85 @@ export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
 }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const connectedHandledRef = useRef(false);
 
   useEffect(() => {
     if (!isOpen) {
       setIsConnecting(false);
       setStatusMsg(null);
+      connectedHandledRef.current = false;
     }
   }, [isOpen]);
 
-  // Listen for Electron token update event while modal is open
+  // Robust multi-channel listener for auth success
   useEffect(() => {
     if (!isOpen) return;
 
-    let unsubscribe: (() => void) | undefined;
+    const handleConnected = () => {
+      if (connectedHandledRef.current) return;
+      connectedHandledRef.current = true;
+      setIsConnecting(false);
+      setStatusMsg('★ Connected successfully! Loading your Liked Songs...');
+      if (onConnected) onConnected();
+      setTimeout(() => {
+        onClose();
+      }, 500);
+    };
+
+    // 1. Electron IPC Listener
+    let unsubscribeIpc: (() => void) | undefined;
     if (window.electronAPI?.onAuthTokenUpdated) {
-      unsubscribe = window.electronAPI.onAuthTokenUpdated(() => {
-        setIsConnecting(false);
-        setStatusMsg('★ Connected successfully! Loading your Liked Songs...');
-        if (onConnected) onConnected();
-        setTimeout(() => {
-          onClose();
-        }, 600);
-      });
+      unsubscribeIpc = window.electronAPI.onAuthTokenUpdated(handleConnected);
     }
 
-    return () => {
-      if (unsubscribe) unsubscribe();
+    // 2. Active Polling while connecting
+    let pollInterval: any = null;
+    const checkAuth = async () => {
+      try {
+        const { valid } = await validateSpotifyToken();
+        if (valid) {
+          handleConnected();
+        }
+      } catch {}
     };
-  }, [isOpen, onClose, onConnected]);
+
+    if (isConnecting) {
+      pollInterval = setInterval(checkAuth, 800);
+    }
+
+    // 3. Window Focus Listener (as soon as user returns from browser to app)
+    const handleFocus = () => {
+      checkAuth();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    // 4. BroadcastChannel for cross-tab Web sync
+    let bc: BroadcastChannel | null = null;
+    try {
+      bc = new BroadcastChannel('pixeltunes_auth');
+      bc.onmessage = (e) => {
+        if (e.data?.type === 'CONNECTED') {
+          handleConnected();
+        }
+      };
+    } catch {}
+
+    // 5. LocalStorage sync listener
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'pixeltunes_auth_sync') {
+        checkAuth();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    return () => {
+      if (unsubscribeIpc) unsubscribeIpc();
+      if (pollInterval) clearInterval(pollInterval);
+      window.removeEventListener('focus', handleFocus);
+      window.removeEventListener('storage', handleStorage);
+      if (bc) bc.close();
+    };
+  }, [isOpen, isConnecting, onClose, onConnected]);
 
   if (!isOpen) return null;
 

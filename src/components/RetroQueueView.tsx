@@ -189,7 +189,7 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
       {/* Top Header Bar */}
       <div className="h-7 bg-[#fec5db] border-b-2 border-[#191244] px-2 flex items-center justify-between select-none shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <PixelSaturnIcon className="w-5 h-3.5 shrink-0" />
+          <PixelSaturnIcon className="w-5 h-3.5 shrink-0" fill="#191244" />
           <span className="font-pixel text-[8px] font-bold tracking-wider text-[#191244] truncate">
             LIKED SONGS {allLikedTracks.length > 0 ? `(${allLikedTracks.length})` : queueTracks.length > 0 ? `(${queueTracks.length})` : ''}
           </span>

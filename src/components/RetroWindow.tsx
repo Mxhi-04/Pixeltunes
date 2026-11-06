@@ -226,7 +226,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     }
   }, [initialLikedTrack]);
 
-  // Whenever authoritative Spotify item is active, update saved track unless user just clicked another track
+  // Whenever authoritative Spotify item is actively playing, update saved track
   useEffect(() => {
     if (spotifyPlayback?.item) {
       if (selectedTrack && Date.now() - selectedTimestamp < 5000) {
@@ -240,12 +240,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         return;
       }
 
-      setSavedSpotifyTrack(spotifyPlayback.item);
-      try {
-        localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
-      } catch {}
+      // Only overwrite saved track if Spotify is actively playing
+      if (spotifyPlayback.is_playing) {
+        setSavedSpotifyTrack(spotifyPlayback.item);
+        try {
+          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
+        } catch {}
+      }
     }
-  }, [spotifyPlayback?.item, selectedTrack, selectedTimestamp]);
+  }, [spotifyPlayback?.item, spotifyPlayback?.is_playing, selectedTrack, selectedTimestamp]);
 
   // Whenever Pixeltunes is opened: pause on the first song of user's Liked Songs playlist
   useEffect(() => {
@@ -291,10 +294,12 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   // 2. Authoritative live Spotify playback item
   // 3. Saved / First Liked track
   const isRecentSelection = selectedTrack && Date.now() - selectedTimestamp < 5000;
+  const isActivelyPlaying = Boolean(spotifyPlayback?.is_playing);
   const activeSpotifyItem =
     (isRecentSelection ? selectedTrack : null) ||
-    spotifyPlayback?.item ||
-    (isSpotifyConnected ? savedSpotifyTrack : null);
+    (isActivelyPlaying ? spotifyPlayback?.item : null) ||
+    (isSpotifyConnected ? savedSpotifyTrack : null) ||
+    spotifyPlayback?.item;
   const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null;
   const isPlaying = optimisticPlaying !== null
     ? optimisticPlaying

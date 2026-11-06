@@ -226,7 +226,14 @@ function startPersistentAuthServer() {
               }
             } catch (e) {}
 
-            // Send in-memory credentials to Electron renderer (NO page reload, NO UI disruption!)
+            // Bring Electron window to front and deliver credentials
+            if (!mainWindow || mainWindow.isDestroyed()) {
+              createWindow();
+            } else {
+              mainWindow.show();
+              mainWindow.restore();
+              mainWindow.focus();
+            }
             if (mainWindow && !mainWindow.isDestroyed()) {
               mainWindow.webContents.send('auth:token-updated', {
                 access_token: accessToken,
@@ -256,8 +263,20 @@ function startPersistentAuthServer() {
                   <h1>★ SPOTIFY CONNECTED! ★</h1>
                   <p>Connected as <strong>${userName}</strong>.</p>
                   <p>Your <strong>Pixeltunes Player</strong> is synced and will auto-refresh seamlessly.</p>
-                  <div class="badge">READY • YOU CAN CLOSE THIS TAB</div>
+                  <div class="badge">READY • RETURNING TO PIXELTUNES...</div>
                 </div>
+                <script>
+                  try {
+                    const bc = new BroadcastChannel('pixeltunes_auth');
+                    bc.postMessage({ type: 'CONNECTED', user: "${userName}" });
+                  } catch (e) {}
+                  try {
+                    localStorage.setItem('pixeltunes_auth_sync', Date.now().toString());
+                  } catch (e) {}
+                  setTimeout(() => {
+                    try { window.close(); } catch (e) {}
+                  }, 1200);
+                </script>
               </body>
               </html>
             `);

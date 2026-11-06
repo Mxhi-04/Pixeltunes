@@ -206,3 +206,4 @@ export const PixelSpeakerIcon: React.FC<PixelSpeakerIconProps> = ({
     </svg>
   );
 };
+

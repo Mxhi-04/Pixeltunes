@@ -620,6 +620,17 @@ export async function loadAndPauseFirstLikedSong(): Promise<{
   likedSongs: any[];
 }> {
   try {
+    // If Spotify is actively playing in the background, pause it so Pixeltunes is paused on the first liked song
+    try {
+      const stateRes = await spotifyRequest('GET', '/me/player').catch(() => null);
+      if (stateRes && stateRes.ok) {
+        const state = await stateRes.json().catch(() => null);
+        if (state && state.is_playing) {
+          await spotifyRequest('PUT', '/me/player/pause').catch(() => {});
+        }
+      }
+    } catch {}
+
     const liked = await getLikedSongs(50);
     if (!liked || liked.length === 0) {
       return { firstTrack: null, likedSongs: [] };
