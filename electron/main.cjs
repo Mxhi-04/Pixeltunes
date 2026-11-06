@@ -322,6 +322,27 @@ function startPersistentAuthServer() {
         }
       }
 
+      // 6. /api/click-track: click a specific track in the playlist view
+      if (parsedUrl.pathname === '/api/click-track') {
+        const idx = parseInt(parsedUrl.searchParams.get('index') || '1', 10);
+        if (mainWindow) {
+          const resVal = await mainWindow.webContents.executeJavaScript(`
+            (() => {
+              const items = document.querySelectorAll('.divide-y > div');
+              if (items && items[${idx}]) {
+                items[${idx}].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                items[${idx}].click();
+                return 'clicked_item_' + ${idx};
+              }
+              return 'not_found';
+            })()
+          `);
+          res.writeHead(200);
+          res.end(resVal);
+          return;
+        }
+      }
+
       // 6. /api/close-modal: close any open modal
       if (parsedUrl.pathname === '/api/close-modal') {
         if (mainWindow) {
@@ -401,17 +422,8 @@ function startPersistentAuthServer() {
         return;
       }
 
-      // 10. /api/spotify/open-uri: open a Spotify track URI directly
+      // 10. /api/spotify/open-uri: Silent API stub (prevents popping up Spotify window)
       if (parsedUrl.pathname === '/api/spotify/open-uri') {
-        const uri = parsedUrl.searchParams.get('uri');
-        if (uri) {
-          const { exec } = require('child_process');
-          if (process.platform === 'darwin') {
-            exec(`open -g -a Spotify "${uri}"`);
-          } else {
-            shell.openExternal(uri);
-          }
-        }
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: true }));
         return;
@@ -559,22 +571,11 @@ ipcMain.handle('spotify:refresh-token', async () => {
 });
 
 ipcMain.handle('spotify:wake', async () => {
-  const { exec } = require('child_process');
-  if (process.platform === 'darwin') {
-    exec('open -g -a Spotify');
-  }
   return true;
 });
 
 ipcMain.handle('spotify:open-uri', (event, uri) => {
-  if (uri) {
-    const { exec } = require('child_process');
-    if (process.platform === 'darwin') {
-      exec(`open -g -a Spotify "${uri}"`);
-    } else {
-      shell.openExternal(uri);
-    }
-  }
+  // Silent no-op: Spotify stays minimized in Dock without popping up
   return true;
 });
 

@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  getQueue,
+  getCurrentlyPlaying,
   playTrack,
-  playPlaylist,
   getLikedSongs,
-  getAlbumTracks,
-  getPlaylistTracks,
 } from '../services/spotify';
 import { playClickSound } from '../services/soundEffects';
 
@@ -28,15 +25,28 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
   initialLikedTrack,
   initialLikedList,
 }) => {
-  const [queueTracks, setQueueTracks] = useState<any[]>(() => {
+  // Master list of user's Liked Songs - playlist is strictly limited to Liked Songs
+  const [allLikedTracks, setAllLikedTracks] = useState<any[]>(() => {
     if (initialLikedList && initialLikedList.length > 0) {
-      return initialLikedList.slice(1);
+      return initialLikedList;
     }
     try {
       const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
       if (cached) {
-        const list = JSON.parse(cached);
-        return list.slice(1);
+        return JSON.parse(cached);
+      }
+    } catch {}
+    return [];
+  });
+
+  const [queueTracks, setQueueTracks] = useState<any[]>(() => {
+    if (initialLikedList && initialLikedList.length > 0) {
+      return initialLikedList;
+    }
+    try {
+      const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
+      if (cached) {
+        return JSON.parse(cached);
       }
     } catch {}
     return [];
@@ -60,92 +70,54 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
   // Sync when initialLikedList updates
   useEffect(() => {
     if (initialLikedList && initialLikedList.length > 0) {
-      setCurrentlyPlaying(initialLikedTrack || initialLikedList[0]);
-      setQueueTracks(initialLikedList.slice(1));
+      setAllLikedTracks(initialLikedList);
+      setQueueTracks(initialLikedList);
+      if (initialLikedTrack) {
+        setCurrentlyPlaying(initialLikedTrack);
+      } else {
+        setCurrentlyPlaying(initialLikedList[0]);
+      }
     }
   }, [initialLikedList, initialLikedTrack]);
 
+  // Fetch strictly and ONLY Liked Songs - never switch to song author or album!
   const fetchQueue = useCallback(async () => {
     if (!isSpotifyConnected) return;
     try {
-      const data = await getQueue();
-      const current = data.currentlyPlaying;
-      if (current) {
-        setCurrentlyPlaying(current);
+      // 1. Sync currently playing track
+      const current = await getCurrentlyPlaying().catch(() => null);
+      if (current?.item) {
+        setCurrentlyPlaying(current.item);
         try {
-          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(current));
+          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(current.item));
         } catch {}
       }
 
-      // 1. If Spotify has tracks in queue, display them
-      if (data.queue && data.queue.length > 0) {
-        setQueueTracks(data.queue);
-        return;
-      }
-
-      // 2. If queue is empty but a song is currently playing / loaded (e.g. from album or playlist):
-      // Retrieve the album or playlist tracks so the playlist view is NEVER empty!
-      if (current) {
-        const contextUri = current.context?.uri;
-        if (contextUri && contextUri.includes(':playlist:')) {
-          const playlistId = contextUri.split(':playlist:')[1];
-          const playlistTracks = await getPlaylistTracks(playlistId, 50);
-          if (playlistTracks.length > 0) {
-            const idx = playlistTracks.findIndex((t) => t.id === current.id || t.uri === current.uri);
-            const list = idx !== -1 ? playlistTracks.slice(idx + 1) : playlistTracks;
-            setQueueTracks(list.length > 0 ? list : playlistTracks);
-            return;
-          }
-        }
-
-        const albumId = current.album?.id;
-        if (albumId) {
-          const albumTracks = await getAlbumTracks(albumId, current.album);
-          if (albumTracks.length > 0) {
-            const idx = albumTracks.findIndex((t) => t.id === current.id || t.uri === current.uri);
-            const list = idx !== -1 ? albumTracks.slice(idx + 1) : albumTracks;
-            setQueueTracks(list.length > 0 ? list : albumTracks);
-            return;
-          }
-        }
-      }
-
-      // 3. Fallback when idle: fetch user's Liked Songs!
+      // 2. Fetch authoritative Liked Songs playlist
       const liked = await getLikedSongs(50);
-      if (liked.length > 0) {
+      if (liked && liked.length > 0) {
+        setAllLikedTracks(liked);
+        setQueueTracks(liked);
         try {
           localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
         } catch {}
-
-        if (!current) {
-          setCurrentlyPlaying(liked[0]);
-          setQueueTracks(liked.slice(1));
-        } else {
-          const idx = liked.findIndex((t) => t.id === current.id || t.uri === current.uri);
-          if (idx !== -1 && idx < liked.length - 1) {
-            setQueueTracks(liked.slice(idx + 1));
-          } else {
-            setQueueTracks(liked.filter((t) => t.id !== current.id));
-          }
-        }
         return;
       }
 
-      // 4. Fallback to cache if network request failed or empty
+      // 3. Fallback to cache if network is slow/offline
       try {
         const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
         if (cached) {
           const list = JSON.parse(cached);
           if (list.length > 0) {
-            setQueueTracks(list.slice(1));
+            setAllLikedTracks(list);
+            setQueueTracks(list);
             return;
           }
         }
       } catch {}
-
-      setQueueTracks([]);
     } catch (e) {
-      console.error('Failed to fetch Spotify queue:', e);
+      console.error('Failed to fetch Liked Songs queue:', e);
     } finally {
       setIsLoading(false);
     }
@@ -157,12 +129,12 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
     fetchQueue();
   }, [fetchQueue, currentTrackTitle]);
 
-  // Periodic polling to keep playlist in sync with Spotify
+  // Periodic polling to keep Liked Songs list fresh
   useEffect(() => {
     if (!isSpotifyConnected) return;
     const interval = setInterval(() => {
       fetchQueue();
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [isSpotifyConnected, fetchQueue]);
 
@@ -180,50 +152,27 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
       localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(track));
     } catch {}
 
-    // Find subsequent tracks in current playlist to show and queue
-    const trackIdx = queueTracks.findIndex(
+    // Find subsequent tracks in Liked Songs to queue up
+    const trackList = allLikedTracks.length > 0 ? allLikedTracks : queueTracks;
+    const trackIdx = trackList.findIndex(
       (t) => (t.id && t.id === track.id) || (t.uri && t.uri === track.uri)
     );
-    const subsequentTracks = trackIdx !== -1 ? queueTracks.slice(trackIdx + 1) : [];
-    // Immediately show only the songs after the selected song
-    if (subsequentTracks.length > 0) {
-      setQueueTracks(subsequentTracks);
-    }
+    const subsequentTracks = trackIdx !== -1
+      ? trackList.slice(trackIdx + 1)
+      : trackList.filter((t) => t.uri !== track.uri);
     const remainingUris = subsequentTracks.map((t) => t.uri).filter(Boolean);
 
+    // Play silently via Web API (never pop up Spotify window)
     const success = await playTrack(track.uri, undefined, remainingUris);
     if (success) {
       setTimeout(() => {
         setStatusMsg(null);
-        fetchQueue();
-      }, 1200);
-      setTimeout(() => {
-        fetchQueue();
-      }, 2500);
+      }, 1500);
     } else {
       setStatusMsg('Starting playback...');
       setTimeout(() => {
         setStatusMsg(null);
-        fetchQueue();
       }, 2000);
-    }
-  };
-
-  const handleStartPopularPlaylist = async () => {
-    playClickSound();
-    setStatusMsg('▶ Starting Today\'s Top Hits...');
-    setIsLoading(true);
-    const ok = await playPlaylist('spotify:playlist:37i9dQZF1DXcBWIGoYBM5M');
-    if (ok) {
-      if (onTrackPlayed) onTrackPlayed();
-      setTimeout(() => {
-        setStatusMsg(null);
-        fetchQueue();
-      }, 1200);
-    } else {
-      setStatusMsg('Please open Spotify app');
-      setIsLoading(false);
-      setTimeout(() => setStatusMsg(null), 2500);
     }
   };
 
@@ -241,7 +190,7 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="text-[10px]">♫</span>
           <span className="font-pixel text-[8px] font-bold tracking-wider text-[#191244] truncate">
-            PLAYLIST {queueTracks.length > 0 ? `(${queueTracks.length})` : ''}
+            LIKED SONGS {allLikedTracks.length > 0 ? `(${allLikedTracks.length})` : queueTracks.length > 0 ? `(${queueTracks.length})` : ''}
           </span>
         </div>
 
@@ -366,17 +315,21 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
             ) : (
               <div className="p-3 text-center space-y-2 py-10">
                 <div className="font-pixel text-[8px] text-[#191244] font-bold">
-                  PLAYLIST IS EMPTY
+                  NO LIKED SONGS FOUND
                 </div>
                 <div className="font-silkscreen text-[7px] text-[#191244]/75 leading-relaxed">
-                  Play a playlist or album in Spotify to view songs here!
+                  Like songs in Spotify to see and control them here!
                 </div>
                 <div className="pt-2 flex flex-col items-center gap-1.5">
                   <button
-                    onClick={handleStartPopularPlaylist}
+                    onClick={() => {
+                      playClickSound();
+                      setIsLoading(true);
+                      fetchQueue();
+                    }}
                     className="px-2.5 py-1 bg-[#9df0cf] text-[#191244] border-2 border-[#191244] font-pixel text-[7.5px] hover:bg-white active:translate-y-0.5 font-bold cursor-pointer shadow-pixel-sm"
                   >
-                    ▶ PLAY POPULAR HITS
+                    ↻ RELOAD LIKED SONGS
                   </button>
                   <button
                     onClick={() => {

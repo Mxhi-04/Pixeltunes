@@ -161,21 +161,10 @@ export async function play(deviceId?: string): Promise<boolean> {
   try {
     let devices = await getDevices();
 
-    // If no devices are found (Spotify is closed/inactive on Mac), wake Spotify in background
+    // If devices list is empty, poll briefly for registered device
     if (devices.length === 0) {
-      if ((window as any).electronAPI?.wakeSpotify) {
-        try {
-          await (window as any).electronAPI.wakeSpotify();
-        } catch (e) {}
-      } else {
-        try {
-          await fetch('http://127.0.0.1:8888/api/spotify/wake');
-        } catch (e) {}
-      }
-
-      // Poll briefly for device to register
-      for (let attempt = 0; attempt < 6; attempt++) {
-        await new Promise((r) => setTimeout(r, 500));
+      for (let attempt = 0; attempt < 3; attempt++) {
+        await new Promise((r) => setTimeout(r, 300));
         devices = await getDevices();
         if (devices.length > 0) break;
       }
@@ -199,7 +188,7 @@ export async function play(deviceId?: string): Promise<boolean> {
     // If target device is not currently active, transfer playback to activate it
     if (!target.is_active) {
       await transferPlayback(targetId, true);
-      await new Promise((r) => setTimeout(r, 350));
+      await new Promise((r) => setTimeout(r, 250));
     }
 
     const path = `/me/player/play?device_id=${targetId}`;
@@ -210,8 +199,8 @@ export async function play(deviceId?: string): Promise<boolean> {
       return true;
     }
 
-    // 2. If simple resume failed (e.g. 403 Restriction violated / idle player without loaded context):
-    // Retrieve the song that was playing in Spotify from localStorage or queue or liked songs!
+    // 2. If simple resume failed (e.g. idle player without loaded context):
+    // Retrieve the song that was playing in Spotify from localStorage or liked songs!
     let trackUri: string | undefined;
     let subsequentUris: string[] = [];
     try {
@@ -244,34 +233,11 @@ export async function play(deviceId?: string): Promise<boolean> {
     }
 
     if (trackUri) {
-      // If in Electron, tell macOS to load the track in Spotify
-      if ((window as any).electronAPI?.openSpotifyUri) {
-        try {
-          await (window as any).electronAPI.openSpotifyUri(trackUri);
-        } catch (e) {}
-      } else {
-        try {
-          await fetch(`http://127.0.0.1:8888/api/spotify/open-uri?uri=${encodeURIComponent(trackUri)}`);
-        } catch (e) {}
-      }
-
-      await new Promise((r) => setTimeout(r, 400));
-
+      // Pure Web API playback - never trigger OS open commands so Spotify stays minimized
       const playTrackRes = await spotifyRequest('PUT', path, {
         body: { uris: [trackUri, ...subsequentUris] },
       });
       if (playTrackRes.ok || playTrackRes.status === 204) {
-        return true;
-      }
-    }
-
-    // 3. Fallback: play from user's playlists
-    const playlists = await getUserPlaylists(1).catch(() => []);
-    if (playlists.length > 0 && playlists[0]?.uri) {
-      const playlistRes = await spotifyRequest('PUT', path, {
-        body: { context_uri: playlists[0].uri },
-      });
-      if (playlistRes.ok || playlistRes.status === 204) {
         return true;
       }
     }
@@ -452,24 +418,10 @@ export async function playTrack(
   contextUri?: string
 ): Promise<boolean> {
   try {
-    // 1. On macOS desktop, trigger Spotify directly via URI in background
-    if ((window as any).electronAPI?.openSpotifyUri) {
-      try {
-        await (window as any).electronAPI.openSpotifyUri(uri);
-      } catch (e) {}
-    } else {
-      try {
-        await fetch(`http://127.0.0.1:8888/api/spotify/open-uri?uri=${encodeURIComponent(uri)}`).catch(() => {});
-      } catch (e) {}
-    }
-
-    // Wait 300ms for Spotify desktop app to load and register the track
-    await new Promise((r) => setTimeout(r, 300));
-
-    // 2. Resolve active or computer device
+    // 1. Resolve active or computer device
     let devices = await getDevices();
     if (devices.length === 0) {
-      await new Promise((r) => setTimeout(r, 300));
+      await new Promise((r) => setTimeout(r, 200));
       devices = await getDevices();
     }
 
@@ -481,15 +433,15 @@ export async function playTrack(
 
     const targetId = target?.id;
 
-    // 3. If target is inactive, activate device
+    // 2. If target is inactive, activate device silently via API without unminimizing
     if (target && !target.is_active && targetId) {
       await transferPlayback(targetId, true).catch(() => {});
-      await new Promise((r) => setTimeout(r, 250));
+      await new Promise((r) => setTimeout(r, 200));
     }
 
     const query = targetId ? `?device_id=${targetId}` : '';
 
-    // 4. Send resume play (with remaining queue if available)
+    // 3. Send resume play with uris
     let body: any;
     if (contextUri) {
       body = { context_uri: contextUri, offset: { uri } };
@@ -626,28 +578,7 @@ export async function loadAndPauseFirstLikedSong(): Promise<{
       localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
     } catch {}
 
-    // On macOS desktop, load the track into Spotify
-    if ((window as any).electronAPI?.openSpotifyUri) {
-      try {
-        await (window as any).electronAPI.openSpotifyUri(firstSong.uri);
-      } catch (e) {}
-    } else {
-      try {
-        await fetch(`http://127.0.0.1:8888/api/spotify/open-uri?uri=${encodeURIComponent(firstSong.uri)}`).catch(() => {});
-      } catch (e) {}
-    }
-
-    // Immediately pause so Spotify sits paused at the beginning
-    await new Promise((r) => setTimeout(r, 350));
-    await pause().catch(() => {});
-
-    // Also ensure any active device is paused
-    const devices = await getDevices();
-    const active = devices.find((d) => d.is_active);
-    if (active?.id) {
-      await pause(active.id).catch(() => {});
-    }
-
+    // Never trigger OS open commands - keep Spotify completely minimized and untouched!
     return { firstTrack: firstSong, likedSongs: liked };
   } catch (err) {
     console.error('Failed to load and pause first liked song:', err);
