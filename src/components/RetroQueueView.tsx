@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { getQueue, playTrack, playPlaylist } from '../services/spotify';
+import {
+  getQueue,
+  playTrack,
+  playPlaylist,
+  getLikedSongs,
+  getAlbumTracks,
+  getPlaylistTracks,
+} from '../services/spotify';
 import { playClickSound } from '../services/soundEffects';
 
 interface RetroQueueViewProps {
@@ -27,17 +34,60 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
     if (!isSpotifyConnected) return;
     try {
       const data = await getQueue();
-      if (data.currentlyPlaying) {
-        setCurrentlyPlaying(data.currentlyPlaying);
+      const current = data.currentlyPlaying;
+      if (current) {
+        setCurrentlyPlaying(current);
         try {
-          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(data.currentlyPlaying));
+          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(current));
         } catch {}
       }
 
-      // Display ONLY the songs that are shown in the queue in Spotify
-      if (data.queue) {
+      // 1. If Spotify has tracks in queue, display them
+      if (data.queue && data.queue.length > 0) {
         setQueueTracks(data.queue);
+        return;
       }
+
+      // 2. If queue is empty but a song is currently playing / loaded (e.g. from album or playlist):
+      // Retrieve the album or playlist tracks so the playlist view is NEVER empty!
+      if (current) {
+        const contextUri = current.context?.uri;
+        if (contextUri && contextUri.includes(':playlist:')) {
+          const playlistId = contextUri.split(':playlist:')[1];
+          const playlistTracks = await getPlaylistTracks(playlistId, 50);
+          if (playlistTracks.length > 0) {
+            const idx = playlistTracks.findIndex((t) => t.id === current.id || t.uri === current.uri);
+            const list = idx !== -1 ? playlistTracks.slice(idx + 1) : playlistTracks;
+            setQueueTracks(list.length > 0 ? list : playlistTracks);
+            return;
+          }
+        }
+
+        const albumId = current.album?.id;
+        if (albumId) {
+          const albumTracks = await getAlbumTracks(albumId, current.album);
+          if (albumTracks.length > 0) {
+            const idx = albumTracks.findIndex((t) => t.id === current.id || t.uri === current.uri);
+            const list = idx !== -1 ? albumTracks.slice(idx + 1) : albumTracks;
+            setQueueTracks(list.length > 0 ? list : albumTracks);
+            return;
+          }
+        }
+      }
+
+      // 3. Fallback when idle: fetch user's Liked Songs!
+      const liked = await getLikedSongs(30);
+      if (liked.length > 0) {
+        if (!current) {
+          setCurrentlyPlaying(liked[0]);
+          setQueueTracks(liked.slice(1));
+        } else {
+          setQueueTracks(liked);
+        }
+        return;
+      }
+
+      setQueueTracks([]);
     } catch (e) {
       console.error('Failed to fetch Spotify queue:', e);
     } finally {

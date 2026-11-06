@@ -538,7 +538,7 @@ export async function getUserPlaylists(limit: number = 20): Promise<any[]> {
 /**
  * Get Tracks in a Playlist
  */
-export async function getPlaylistTracks(playlistId: string, limit: number = 30): Promise<any[]> {
+export async function getPlaylistTracks(playlistId: string, limit: number = 50): Promise<any[]> {
   try {
     const res = await spotifyRequest('GET', `/playlists/${playlistId}/tracks?limit=${limit}`);
     if (res.ok) {
@@ -547,6 +547,41 @@ export async function getPlaylistTracks(playlistId: string, limit: number = 30):
     }
   } catch (e) {
     // fallback
+  }
+  return [];
+}
+
+/**
+ * Get User's Liked Songs (Saved Tracks)
+ */
+export async function getLikedSongs(limit: number = 50): Promise<any[]> {
+  try {
+    const res = await spotifyRequest('GET', `/me/tracks?limit=${limit}`);
+    if (res.ok) {
+      const data = await res.json();
+      return (data.items || []).map((item: any) => item.track).filter(Boolean);
+    }
+  } catch (e) {
+    console.error('Spotify get liked songs error:', e);
+  }
+  return [];
+}
+
+/**
+ * Get Tracks in an Album
+ */
+export async function getAlbumTracks(albumId: string, albumMeta?: any): Promise<any[]> {
+  try {
+    const res = await spotifyRequest('GET', `/albums/${albumId}/tracks?limit=50`);
+    if (res.ok) {
+      const data = await res.json();
+      return (data.items || []).map((t: any) => ({
+        ...t,
+        album: albumMeta || t.album || { id: albumId, images: [] },
+      }));
+    }
+  } catch (e) {
+    console.error('Spotify get album tracks error:', e);
   }
   return [];
 }

@@ -19,6 +19,10 @@ export const SPOTIFY_SCOPES = [
   'user-read-playback-state',
   'user-modify-playback-state',
   'user-read-currently-playing',
+  'user-library-read',
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'user-read-recently-played',
 ];
 
 // In-Memory Token Storage ONLY (Never logged or written to localStorage/disk)

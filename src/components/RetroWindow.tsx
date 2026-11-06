@@ -15,6 +15,7 @@ import {
   toggleShuffleSpotify,
   setRepeatModeSpotify,
   getQueue as getQueueSpotify,
+  getLikedSongs as getLikedSongsSpotify,
 } from '../services/spotify';
 import { lofiEngine, BuiltinTrack } from '../services/lofiAudio';
 import {
@@ -215,20 +216,33 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     }
   }, [spotifyPlayback?.item]);
 
-  // If Spotify is idle on launch, retrieve the queued track so Pixeltunes immediately displays it
+  // Whenever Pixeltunes is opened: pause on the first song of user's Liked Songs playlist
   useEffect(() => {
-    if (isSpotifyConnected && !savedSpotifyTrack && !spotifyPlayback?.item) {
-      getQueueSpotify().then((q) => {
-        const tr = q.currentlyPlaying || (q.queue && q.queue.length > 0 ? q.queue[0] : null);
-        if (tr) {
-          setSavedSpotifyTrack(tr);
+    if (isSpotifyConnected && !spotifyPlayback?.is_playing) {
+      getLikedSongsSpotify(1).then((liked) => {
+        if (liked && liked.length > 0) {
+          const firstLiked = liked[0];
+          setSavedSpotifyTrack(firstLiked);
+          setOptimisticPlaying(false); // Paused on that very song
           try {
-            localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(tr));
+            localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(firstLiked));
           } catch {}
+        } else {
+          // Fallback if liked songs empty or scope pending
+          getQueueSpotify().then((q) => {
+            const tr = q.currentlyPlaying || (q.queue && q.queue.length > 0 ? q.queue[0] : null);
+            if (tr) {
+              setSavedSpotifyTrack(tr);
+              setOptimisticPlaying(false);
+              try {
+                localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(tr));
+              } catch {}
+            }
+          }).catch(() => {});
         }
       }).catch(() => {});
     }
-  }, [isSpotifyConnected, savedSpotifyTrack, spotifyPlayback?.item]);
+  }, [isSpotifyConnected]);
 
   // Sync and clear optimistic state whenever authoritative Spotify data arrives matching the active track
   useEffect(() => {

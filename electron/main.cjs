@@ -16,6 +16,10 @@ const SPOTIFY_SCOPES = [
   'user-read-playback-state',
   'user-modify-playback-state',
   'user-read-currently-playing',
+  'user-library-read',
+  'playlist-read-private',
+  'playlist-read-collaborative',
+  'user-read-recently-played',
 ];
 
 // Secure Refresh Token Storage using macOS Keychain (via Electron safeStorage)

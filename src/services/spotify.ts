@@ -129,4 +129,6 @@ export {
   playPlaylist,
   getUserPlaylists,
   getPlaylistTracks,
+  getLikedSongs,
+  getAlbumTracks,
 } from './spotifyApi';
