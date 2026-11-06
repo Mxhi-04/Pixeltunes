@@ -303,6 +303,7 @@ function startPersistentAuthServer() {
                               b.textContent.includes('COVER')
                             );
                 if (btn) {
+                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                   btn.click();
                   return true;
                 }
@@ -342,6 +343,7 @@ function startPersistentAuthServer() {
               const playBtn = document.querySelector('button[title="Play"]') ||
                               document.querySelector('button[title="Pause"]');
               if (playBtn) {
+                playBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
                 playBtn.click();
                 return 'clicked';
               }

@@ -211,15 +211,32 @@ export async function play(deviceId?: string): Promise<boolean> {
     }
 
     // 2. If simple resume failed (e.g. 403 Restriction violated / idle player without loaded context):
-    // Retrieve the song that was playing in Spotify from localStorage or queue!
+    // Retrieve the song that was playing in Spotify from localStorage or queue or liked songs!
     let trackUri: string | undefined;
+    let subsequentUris: string[] = [];
     try {
       const stored = localStorage.getItem('pixeltunes_last_spotify_track');
       if (stored) {
         const parsed = JSON.parse(stored);
         trackUri = parsed.uri;
       }
+      const cache = localStorage.getItem('pixeltunes_liked_songs_cache');
+      if (cache) {
+        const list = JSON.parse(cache);
+        subsequentUris = list
+          .filter((t: any) => t.uri && t.uri !== trackUri)
+          .map((t: any) => t.uri)
+          .slice(0, 48);
+      }
     } catch {}
+
+    if (!trackUri) {
+      const liked = await getLikedSongs(10).catch(() => []);
+      if (liked && liked.length > 0) {
+        trackUri = liked[0].uri;
+        subsequentUris = liked.slice(1).map((t) => t.uri).filter(Boolean).slice(0, 48);
+      }
+    }
 
     if (!trackUri) {
       const queueData = await getQueue().catch(() => null);
@@ -241,7 +258,7 @@ export async function play(deviceId?: string): Promise<boolean> {
       await new Promise((r) => setTimeout(r, 400));
 
       const playTrackRes = await spotifyRequest('PUT', path, {
-        body: { uris: [trackUri] },
+        body: { uris: [trackUri, ...subsequentUris] },
       });
       if (playTrackRes.ok || playTrackRes.status === 204) {
         return true;
@@ -473,17 +490,18 @@ export async function playTrack(
     const query = targetId ? `?device_id=${targetId}` : '';
 
     // 4. Send resume play (with remaining queue if available)
-    let body: any = {};
+    let body: any;
     if (contextUri) {
       body = { context_uri: contextUri, offset: { uri } };
-    } else if (remainingUris && remainingUris.length > 0) {
-      body = { uris: [uri, ...remainingUris.slice(0, 49)] };
+    } else {
+      const remainingClean = (remainingUris || []).filter((u) => u && u !== uri);
+      body = { uris: [uri, ...remainingClean.slice(0, 49)] };
     }
 
     let res = await spotifyRequest(
       'PUT',
       `/me/player/play${query}`,
-      Object.keys(body).length > 0 ? { body } : undefined
+      { body }
     );
     if (!res.ok && res.status !== 204) {
       // Fallback simple resume
@@ -584,5 +602,56 @@ export async function getAlbumTracks(albumId: string, albumMeta?: any): Promise<
     console.error('Spotify get album tracks error:', e);
   }
   return [];
+}
+
+/**
+ * Loads the user's first Liked Song into Spotify and leaves it paused.
+ * Guarantees that Pixeltunes is paused on the user's first liked song on startup or connect.
+ */
+export async function loadAndPauseFirstLikedSong(): Promise<{
+  firstTrack: any | null;
+  likedSongs: any[];
+}> {
+  try {
+    const liked = await getLikedSongs(50);
+    if (!liked || liked.length === 0) {
+      return { firstTrack: null, likedSongs: [] };
+    }
+
+    const firstSong = liked[0];
+
+    // Store in cache for instantaneous rendering
+    try {
+      localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(firstSong));
+      localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
+    } catch {}
+
+    // On macOS desktop, load the track into Spotify
+    if ((window as any).electronAPI?.openSpotifyUri) {
+      try {
+        await (window as any).electronAPI.openSpotifyUri(firstSong.uri);
+      } catch (e) {}
+    } else {
+      try {
+        await fetch(`http://127.0.0.1:8888/api/spotify/open-uri?uri=${encodeURIComponent(firstSong.uri)}`).catch(() => {});
+      } catch (e) {}
+    }
+
+    // Immediately pause so Spotify sits paused at the beginning
+    await new Promise((r) => setTimeout(r, 350));
+    await pause().catch(() => {});
+
+    // Also ensure any active device is paused
+    const devices = await getDevices();
+    const active = devices.find((d) => d.is_active);
+    if (active?.id) {
+      await pause(active.id).catch(() => {});
+    }
+
+    return { firstTrack: firstSong, likedSongs: liked };
+  } catch (err) {
+    console.error('Failed to load and pause first liked song:', err);
+    return { firstTrack: null, likedSongs: [] };
+  }
 }
 

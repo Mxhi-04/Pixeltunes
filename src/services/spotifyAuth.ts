@@ -77,16 +77,41 @@ export async function hasStoredSession(): Promise<boolean> {
     return await window.electronAPI.authHasSession();
   }
 
-  // Web fallback: query local auth server
+  // Web fallback: query local auth server or web refresh token
   try {
     const res = await fetch('http://127.0.0.1:8888/api/auth/session');
     if (res.ok) {
       const data = await res.json();
-      return Boolean(data.hasSession);
+      if (data.hasSession) return true;
     }
   } catch (e) {}
 
+  if (typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('spotify_web_refresh_token'))) {
+    return true;
+  }
+
   return false;
+}
+
+function generateRandomString(length: number): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+  let str = '';
+  const bytes = new Uint8Array(length);
+  crypto.getRandomValues(bytes);
+  for (let i = 0; i < length; i++) {
+    str += chars[bytes[i] % chars.length];
+  }
+  return str;
+}
+
+async function generateCodeChallenge(verifier: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(verifier);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 }
 
 /**
@@ -99,9 +124,86 @@ export async function login(): Promise<{ success: boolean; error?: string }> {
     return await window.electronAPI.authLogin();
   }
 
-  // Web fallback: open local server /login endpoint
-  window.open('http://127.0.0.1:8888/login', '_blank');
-  return { success: true };
+  // Check if local auth server is running (Electron / local dev)
+  let isLocal = false;
+  try {
+    const check = await fetch('http://127.0.0.1:8888/api/auth/session', { signal: AbortSignal.timeout(500) });
+    isLocal = check.ok;
+  } catch (e) {}
+
+  if (isLocal) {
+    window.open('http://127.0.0.1:8888/login', '_blank');
+    return { success: true };
+  }
+
+  // Pure Web Browser PKCE Flow (e.g. deployed on Vercel)
+  try {
+    const verifier = generateRandomString(64);
+    sessionStorage.setItem('spotify_pkce_verifier', verifier);
+    const challenge = await generateCodeChallenge(verifier);
+    const redirectUri = window.location.origin + (window.location.pathname.endsWith('/') ? '' : '/') + 'callback';
+    sessionStorage.setItem('spotify_redirect_uri', redirectUri);
+
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: SPOTIFY_CLIENT_ID,
+      scope: SPOTIFY_SCOPES.join(' '),
+      redirect_uri: redirectUri,
+      code_challenge_method: 'S256',
+      code_challenge: challenge,
+    });
+
+    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
+  }
+}
+
+/**
+ * Handle Web Auth Redirect Callback if '?code=' is present in browser URL
+ */
+export async function handleWebAuthCallback(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  const urlParams = new URLSearchParams(window.location.search);
+  const code = urlParams.get('code');
+  if (!code) return false;
+
+  const verifier = sessionStorage.getItem('spotify_pkce_verifier');
+  const redirectUri = sessionStorage.getItem('spotify_redirect_uri') || window.location.origin + (window.location.pathname.endsWith('/') ? '' : '/') + 'callback';
+
+  if (!verifier) return false;
+
+  try {
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        redirect_uri: redirectUri,
+        client_id: SPOTIFY_CLIENT_ID,
+        code_verifier: verifier,
+      }),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      inMemoryAccessToken = data.access_token;
+      inMemoryExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
+      if (data.refresh_token) {
+        localStorage.setItem('spotify_web_refresh_token', data.refresh_token);
+      }
+      startProactiveTimer();
+
+      window.history.replaceState({}, document.title, window.location.pathname);
+      sessionStorage.removeItem('spotify_pkce_verifier');
+      return true;
+    }
+  } catch (e) {
+    console.error('Web PKCE exchange failed:', e);
+  }
+  return false;
 }
 
 /**
@@ -117,15 +219,42 @@ export async function refresh(): Promise<string | null> {
 
   activeRefreshPromise = (async () => {
     try {
-      let data: { access_token?: string; expires_in?: number; error?: string } | null = null;
+      let data: { access_token?: string; expires_in?: number; error?: string; refresh_token?: string } | null = null;
 
       // 1. Electron Native Keychain Refresh
       if (typeof window !== 'undefined' && window.electronAPI?.authRefresh) {
         data = await window.electronAPI.authRefresh();
       } else {
         // 2. Web fallback to local server
-        const res = await fetch('http://127.0.0.1:8888/api/auth/refresh');
-        data = await res.json().catch(() => null);
+        try {
+          const res = await fetch('http://127.0.0.1:8888/api/auth/refresh');
+          data = await res.json().catch(() => null);
+        } catch (e) {}
+
+        // 3. Web direct refresh token fallback (e.g. Vercel)
+        if (!data?.access_token) {
+          const webRefreshToken = localStorage.getItem('spotify_web_refresh_token');
+          if (webRefreshToken) {
+            try {
+              const res = await fetch('https://accounts.spotify.com/api/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                  grant_type: 'refresh_token',
+                  refresh_token: webRefreshToken,
+                  client_id: SPOTIFY_CLIENT_ID,
+                }),
+              });
+              if (res.ok) {
+                const refreshed = await res.json();
+                data = refreshed;
+                if (refreshed?.refresh_token) {
+                  localStorage.setItem('spotify_web_refresh_token', refreshed.refresh_token);
+                }
+              }
+            } catch (e) {}
+          }
+        }
       }
 
       if (data && data.access_token) {

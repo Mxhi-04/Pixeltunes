@@ -12,6 +12,7 @@ import {
   refresh as authRefresh,
   hasStoredSession,
   onSessionRevoked,
+  handleWebAuthCallback,
 } from './spotifyAuth';
 
 import {
@@ -49,7 +50,7 @@ export function setStoredUserName(name: string) {
  * Validates the current Spotify session.
  * If a secure Keychain session exists, gets an in-memory access token and fetches the user profile.
  */
-export async function validateSpotifyToken(): Promise<{ valid: boolean; user?: string }> {
+export async function validateSpotifyToken(): Promise<{ valid: boolean; user?: string; needsScopeUpgrade?: boolean }> {
   const hasSession = await hasStoredSession();
   if (!hasSession) {
     return { valid: false };
@@ -65,6 +66,13 @@ export async function validateSpotifyToken(): Promise<{ valid: boolean; user?: s
     if (profile) {
       const name = (profile.display_name || profile.id || 'SPOTIFY USER').toUpperCase();
       cachedUserName = name;
+
+      // Verify that the token has user-library-read scope for Liked Songs
+      const tracksCheck = await spotifyRequest('GET', '/me/tracks?limit=1').catch(() => null);
+      if (tracksCheck && tracksCheck.status === 403) {
+        return { valid: false, user: name, needsScopeUpgrade: true };
+      }
+
       return { valid: true, user: name };
     }
   } catch (e) {}
@@ -120,6 +128,7 @@ export {
   setRepeatSpotify as setRepeatModeSpotify,
   getPlaybackState,
   getCurrentlyPlaying,
+  handleWebAuthCallback,
 };
 
 export {
@@ -131,4 +140,5 @@ export {
   getPlaylistTracks,
   getLikedSongs,
   getAlbumTracks,
+  loadAndPauseFirstLikedSong,
 } from './spotifyApi';

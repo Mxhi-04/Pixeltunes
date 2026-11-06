@@ -3,6 +3,7 @@ import confetti from 'canvas-confetti';
 import { RetroWindow } from './components/RetroWindow';
 import { SpotifyModal } from './components/SpotifyModal';
 import { SettingsModal } from './components/SettingsModal';
+import { QuickConnectModal } from './components/QuickConnectModal';
 import { THEMES, RetroTheme } from './types/theme';
 import { SCALES, PlayerScale } from './types/scale';
 import { SpotifyPlaybackState } from './types/spotify';
@@ -16,6 +17,8 @@ import {
   startSpotifyAutoRefreshLoop,
   onSessionRevoked,
   setStoredUserName,
+  loadAndPauseFirstLikedSong,
+  handleWebAuthCallback,
 } from './services/spotify';
 import { isSoundEffectsEnabled, setSoundEffectsEnabled, playClickSound } from './services/soundEffects';
 
@@ -54,10 +57,27 @@ export const App: React.FC = () => {
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
   const [spotifyPlayback, setSpotifyPlayback] = useState<SpotifyPlaybackState | null>(null);
   const [userName, setUserName] = useState('RABGON');
+  const [showQuickConnect, setShowQuickConnect] = useState(false);
+  const [needsScopeUpgrade, setNeedsScopeUpgrade] = useState(false);
+  const [initialLikedTrack, setInitialLikedTrack] = useState<any>(null);
+  const [initialLikedList, setInitialLikedList] = useState<any[]>([]);
 
   // Modals
   const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Helper to load and pause user's first liked song on startup/connect
+  const syncFirstLikedSong = useCallback(async () => {
+    try {
+      const res = await loadAndPauseFirstLikedSong();
+      if (res.firstTrack) {
+        setInitialLikedTrack(res.firstTrack);
+        setInitialLikedList(res.likedSongs);
+      }
+    } catch (e) {
+      console.error('Failed to sync first liked song:', e);
+    }
+  }, []);
 
   // Window Dimensions for Responsive Proportional Scaling (Layout NEVER changes!)
   const [windowDimensions, setWindowDimensions] = useState({
@@ -84,21 +104,36 @@ export const App: React.FC = () => {
 
   // Validate session on mount & subscribe to token updates
   useEffect(() => {
-    // 1. Initial check: If user has a valid Keychain session, connect automatically
-    validateSpotifyToken().then(({ valid, user }) => {
-      if (valid && user) {
+    const checkInitialAuth = async () => {
+      // 0. Check if web browser returned from Spotify PKCE redirect
+      await handleWebAuthCallback().catch(() => {});
+
+      // 1. Initial check: If user has a valid Keychain session with all scopes, connect & pause on 1st liked song
+      const { valid, user, needsScopeUpgrade: upgradeRequired } = await validateSpotifyToken();
+      if (valid && user && !upgradeRequired) {
         setIsSpotifyConnected(true);
         setUserName(user);
+        setShowQuickConnect(false);
+        setNeedsScopeUpgrade(false);
+        // Pause on the very first song of user's Liked Songs playlist whenever Pixeltunes is opened!
+        syncFirstLikedSong();
       } else {
         setIsSpotifyConnected(false);
+        setNeedsScopeUpgrade(Boolean(upgradeRequired));
+        // Prompt to connect in 1-click on open!
+        setShowQuickConnect(true);
       }
-    });
+    };
+
+    checkInitialAuth();
 
     // 2. Subscribe to Electron PKCE auth callback (zero reload, instant seamless sync)
     let unsubscribeUpdated: (() => void) | undefined;
     if (window.electronAPI?.onAuthTokenUpdated) {
-      unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated((payload) => {
+      unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated(async (payload) => {
         setIsSpotifyConnected(true);
+        setShowQuickConnect(false);
+        setNeedsScopeUpgrade(false);
         const name = (payload.user_name || 'SPOTIFY USER').toUpperCase();
         setUserName(name);
         setStoredUserName(name);
@@ -108,6 +143,9 @@ export const App: React.FC = () => {
           origin: { y: 0.6 },
           colors: ['#fec5db', '#8fa2d4', '#9df0cf', '#ffd269'],
         });
+
+        // As soon as Pixeltunes is connected, pause on the first liked song playlist of the user!
+        syncFirstLikedSong();
       });
     }
 
@@ -115,13 +153,14 @@ export const App: React.FC = () => {
     const unsubscribeRevoked = onSessionRevoked(() => {
       setIsSpotifyConnected(false);
       setSpotifyPlayback(null);
+      setShowQuickConnect(true);
     });
 
     return () => {
       if (unsubscribeUpdated) unsubscribeUpdated();
       unsubscribeRevoked();
     };
-  }, []);
+  }, [syncFirstLikedSong]);
 
   // Poll Spotify Playback State
   const pollSpotify = useCallback(async () => {
@@ -181,17 +220,23 @@ export const App: React.FC = () => {
     });
   };
 
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = async () => {
     setIsSpotifyConnected(true);
+    setShowQuickConnect(false);
+    setNeedsScopeUpgrade(false);
     const name = getStoredUserName();
     setUserName(name);
     pollSpotify();
+    await syncFirstLikedSong();
   };
 
   const handleLogout = () => {
     clearSpotifyAuth();
     setIsSpotifyConnected(false);
     setSpotifyPlayback(null);
+    setInitialLikedTrack(null);
+    setInitialLikedList([]);
+    setShowQuickConnect(true);
   };
 
   // Check if running in Electron
@@ -248,9 +293,19 @@ export const App: React.FC = () => {
             onScaleChange={handleScaleChange}
             isSpotifyConnected={isSpotifyConnected}
             spotifyPlayback={spotifyPlayback}
+            initialLikedTrack={initialLikedTrack}
+            initialLikedList={initialLikedList}
             onPollSpotify={pollSpotify}
             onOpenSpotifyModal={() => setIsSpotifyModalOpen(true)}
             onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+          />
+
+          {/* 1-Click Spotify Connect Prompt on Startup */}
+          <QuickConnectModal
+            isOpen={showQuickConnect}
+            onClose={() => setShowQuickConnect(false)}
+            needsScopeUpgrade={needsScopeUpgrade}
+            onConnected={syncFirstLikedSong}
           />
 
           {/* Modals rendered directly inside the scaled 720x410 container so they never clip or distort! */}

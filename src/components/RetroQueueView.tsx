@@ -15,6 +15,8 @@ interface RetroQueueViewProps {
   onOpenSpotifyModal?: () => void;
   onTrackPlayed?: (track?: any) => void;
   currentTrackTitle?: string;
+  initialLikedTrack?: any;
+  initialLikedList?: any[];
 }
 
 export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
@@ -23,12 +25,45 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
   onOpenSpotifyModal,
   onTrackPlayed,
   currentTrackTitle,
+  initialLikedTrack,
+  initialLikedList,
 }) => {
-  const [queueTracks, setQueueTracks] = useState<any[]>([]);
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(null);
+  const [queueTracks, setQueueTracks] = useState<any[]>(() => {
+    if (initialLikedList && initialLikedList.length > 0) {
+      return initialLikedList.slice(1);
+    }
+    try {
+      const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
+      if (cached) {
+        const list = JSON.parse(cached);
+        return list.slice(1);
+      }
+    } catch {}
+    return [];
+  });
+
+  const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(() => {
+    if (initialLikedTrack) return initialLikedTrack;
+    if (initialLikedList && initialLikedList.length > 0) return initialLikedList[0];
+    try {
+      const stored = localStorage.getItem('pixeltunes_last_spotify_track');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [isLoading, setIsLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   const [activePlayingUri, setActivePlayingUri] = useState<string | null>(null);
+
+  // Sync when initialLikedList updates
+  useEffect(() => {
+    if (initialLikedList && initialLikedList.length > 0) {
+      setCurrentlyPlaying(initialLikedTrack || initialLikedList[0]);
+      setQueueTracks(initialLikedList.slice(1));
+    }
+  }, [initialLikedList, initialLikedTrack]);
 
   const fetchQueue = useCallback(async () => {
     if (!isSpotifyConnected) return;
@@ -76,16 +111,37 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
       }
 
       // 3. Fallback when idle: fetch user's Liked Songs!
-      const liked = await getLikedSongs(30);
+      const liked = await getLikedSongs(50);
       if (liked.length > 0) {
+        try {
+          localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
+        } catch {}
+
         if (!current) {
           setCurrentlyPlaying(liked[0]);
           setQueueTracks(liked.slice(1));
         } else {
-          setQueueTracks(liked);
+          const idx = liked.findIndex((t) => t.id === current.id || t.uri === current.uri);
+          if (idx !== -1 && idx < liked.length - 1) {
+            setQueueTracks(liked.slice(idx + 1));
+          } else {
+            setQueueTracks(liked.filter((t) => t.id !== current.id));
+          }
         }
         return;
       }
+
+      // 4. Fallback to cache if network request failed or empty
+      try {
+        const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
+        if (cached) {
+          const list = JSON.parse(cached);
+          if (list.length > 0) {
+            setQueueTracks(list.slice(1));
+            return;
+          }
+        }
+      } catch {}
 
       setQueueTracks([]);
     } catch (e) {
