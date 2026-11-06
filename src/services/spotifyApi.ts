@@ -126,6 +126,17 @@ export async function getCurrentlyPlaying(): Promise<any | null> {
   }
 }
 
+let cachedUserId: string | null = null;
+
+export function getUserId(): string | null {
+  if (cachedUserId) return cachedUserId;
+  try {
+    return localStorage.getItem('pixeltunes_user_id');
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Get authorized user profile
  */
@@ -133,7 +144,14 @@ export async function getUserProfile(): Promise<{ id: string; display_name: stri
   try {
     const res = await spotifyRequest('GET', '/me');
     if (res.ok) {
-      return await res.json();
+      const data = await res.json();
+      if (data?.id) {
+        cachedUserId = data.id;
+        try {
+          localStorage.setItem('pixeltunes_user_id', data.id);
+        } catch {}
+      }
+      return data;
     }
   } catch (e) {}
   return null;
@@ -233,7 +251,25 @@ export async function play(deviceId?: string): Promise<boolean> {
     }
 
     if (trackUri) {
-      // Pure Web API playback - never trigger OS open commands so Spotify stays minimized
+      let uid = getUserId();
+      if (!uid) {
+        const uProfile = await getUserProfile().catch(() => null);
+        uid = uProfile?.id || null;
+      }
+
+      if (uid) {
+        const playRes = await spotifyRequest('PUT', path, {
+          body: {
+            context_uri: `spotify:user:${uid}:collection`,
+            offset: { uri: trackUri },
+          },
+        });
+        if (playRes.ok || playRes.status === 204) {
+          return true;
+        }
+      }
+
+      // Pure Web API playback fallback with uris
       const playTrackRes = await spotifyRequest('PUT', path, {
         body: { uris: [trackUri, ...subsequentUris] },
       });
@@ -441,10 +477,22 @@ export async function playTrack(
 
     const query = targetId ? `?device_id=${targetId}` : '';
 
-    // 3. Send resume play with uris
+    // 3. Resolve context URI (use user's Liked Songs collection if not specified)
+    let effectiveContextUri = contextUri;
+    if (!effectiveContextUri) {
+      let uid = getUserId();
+      if (!uid) {
+        const uProfile = await getUserProfile().catch(() => null);
+        uid = uProfile?.id || null;
+      }
+      if (uid) {
+        effectiveContextUri = `spotify:user:${uid}:collection`;
+      }
+    }
+
     let body: any;
-    if (contextUri) {
-      body = { context_uri: contextUri, offset: { uri } };
+    if (effectiveContextUri) {
+      body = { context_uri: effectiveContextUri, offset: { uri } };
     } else {
       const remainingClean = (remainingUris || []).filter((u) => u && u !== uri);
       body = { uris: [uri, ...remainingClean.slice(0, 49)] };
@@ -455,9 +503,16 @@ export async function playTrack(
       `/me/player/play${query}`,
       { body }
     );
-    if (!res.ok && res.status !== 204) {
-      // Fallback simple resume
-      res = await spotifyRequest('PUT', `/me/player/play${query}`);
+    if (!res.ok && res.status !== 204 && effectiveContextUri) {
+      // Fallback with uris array
+      const remainingClean = (remainingUris || []).filter((u) => u && u !== uri);
+      res = await spotifyRequest('PUT', `/me/player/play${query}`, {
+        body: { uris: [uri, ...remainingClean.slice(0, 49)] },
+      });
+      if (!res.ok && res.status !== 204) {
+        // Fallback simple resume
+        res = await spotifyRequest('PUT', `/me/player/play${query}`);
+      }
     }
 
     return res.ok || res.status === 204;

@@ -361,7 +361,8 @@ function startPersistentAuthServer() {
         if (mainWindow) {
           const resVal = await mainWindow.webContents.executeJavaScript(`
             (() => {
-              const playBtn = document.querySelector('button[title="Play"]') ||
+              const playBtn = document.querySelector('[data-testid="main-play-btn"]') ||
+                              document.querySelector('button[title="Play"]') ||
                               document.querySelector('button[title="Pause"]');
               if (playBtn) {
                 playBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));

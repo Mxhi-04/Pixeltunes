@@ -840,6 +840,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
                 {/* Center Play / Pause in Pixel Circle (❚❚) / (▶) */}
                 <button
+                  data-testid="main-play-btn"
                   onClick={handleTogglePlay}
                   title={isPlaying ? "Pause" : "Play"}
                   className="px-1 py-1 hover:scale-105 active:scale-95 transition-transform cursor-pointer text-[#191244] outline-none focus:outline-none focus:ring-0"
