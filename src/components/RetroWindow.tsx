@@ -617,23 +617,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         ) : (
           /* Album Cover View */
           <div className="w-[240px] h-full flex flex-col items-center justify-center p-4 pr-1 shrink-0">
-            {/* View Playlist & Select Songs Option Button (Directly above album cover) */}
-            <div className="mb-2 w-full flex justify-center">
-              <button
-                data-testid="toggle-playlist-btn"
-                onClick={() => {
-                  playClickSound();
-                  setShowQueue(true);
-                }}
-                title="View Queued Playlist"
-                className="px-2.5 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] shadow-pixel-sm font-pixel text-[8px] hover:bg-[#fec5db] active:translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer font-bold tracking-wider"
-              >
-                <span className="text-[10px]">♫</span>
-                <span>VIEW PLAYLIST</span>
-                <span className="text-[7px] text-[#ff7b90]">▼</span>
-              </button>
-            </div>
-
             {/* Pixel Card Container with Double Border */}
             <div
               className="w-[210px] h-[210px] border-4 p-1.5 bg-[#8fa2d4] shadow-pixel-sm shrink-0"
@@ -657,30 +640,20 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               </div>
             </div>
 
-            {/* Source Status Badge */}
-            <div className="mt-2 text-center">
+            {/* View Playlist & Select Songs Button (Shifted into spot below album cover) */}
+            <div className="mt-2.5 text-center">
               <button
+                data-testid="toggle-playlist-btn"
                 onClick={() => {
                   playClickSound();
-                  if (isSpotifyConnected && !hasActiveSpotifyPlayback) {
-                    handleTogglePlay();
-                  } else {
-                    onOpenSpotifyModal();
-                  }
+                  setShowQueue(true);
                 }}
-                className={`px-2 py-0.5 font-pixel text-[8px] border-2 border-[#191244] tracking-wide transition-all cursor-pointer ${
-                  hasActiveSpotifyPlayback
-                    ? 'bg-[#9df0cf] text-[#191244] shadow-pixel-sm'
-                    : isSpotifyConnected
-                    ? 'bg-[#ffd269] text-[#191244]'
-                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                }`}
+                title="View Queued Playlist"
+                className="px-3 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] shadow-pixel-sm font-pixel text-[8px] hover:bg-[#fec5db] active:translate-y-0.5 transition-all flex items-center gap-1.5 cursor-pointer font-bold tracking-wider"
               >
-                {hasActiveSpotifyPlayback
-                  ? '● SPOTIFY CONNECTED'
-                  : isSpotifyConnected
-                  ? '● SPOTIFY IDLE (CLICK TO PLAY)'
-                  : '▶ BUILT-IN LO-FI • CONNECT SPOTIFY'}
+                <span className="text-[10px]">♫</span>
+                <span>VIEW PLAYLIST</span>
+                <span className="text-[7px] text-[#ff7b90]">▼</span>
               </button>
             </div>
           </div>
