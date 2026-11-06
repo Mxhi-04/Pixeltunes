@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { PixelSaturnIcon } from './PixelSaturnIcon';
 import {
   getCurrentlyPlaying,
   playTrack,
@@ -188,27 +189,13 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
       {/* Top Header Bar */}
       <div className="h-7 bg-[#fec5db] border-b-2 border-[#191244] px-2 flex items-center justify-between select-none shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
-          <span className="text-[10px]">♫</span>
+          <PixelSaturnIcon className="w-5 h-3.5 shrink-0" />
           <span className="font-pixel text-[8px] font-bold tracking-wider text-[#191244] truncate">
             LIKED SONGS {allLikedTracks.length > 0 ? `(${allLikedTracks.length})` : queueTracks.length > 0 ? `(${queueTracks.length})` : ''}
           </span>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {/* Refresh Playlist Button */}
-          <button
-            onClick={() => {
-              playClickSound();
-              setIsLoading(true);
-              fetchQueue();
-            }}
-            disabled={isLoading}
-            title="Refresh Playlist"
-            className="w-4 h-4 bg-[#fffdf5] border border-[#191244] text-[9px] font-pixel flex items-center justify-center hover:bg-[#ffd269] active:translate-y-0.5 cursor-pointer font-bold leading-none disabled:opacity-50"
-          >
-            ↻
-          </button>
-
           {/* Switch to Album Cover Button */}
           <button
             data-testid="toggle-cover-btn"

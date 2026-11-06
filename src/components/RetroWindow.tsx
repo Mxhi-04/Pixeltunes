@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PixelCanvas } from './PixelCanvas';
 import { RetroQueueView } from './RetroQueueView';
 import { PixelVisualizer } from './PixelVisualizer';
+import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
@@ -462,7 +463,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     playBlipSound();
     if (isMuted) {
       setIsMuted(false);
-      handleVolumeChange(volume || 70);
+      handleVolumeChange(volume || 80);
     } else {
       setIsMuted(true);
       if (hasActiveSpotifyPlayback || isSpotifyConnected) {
@@ -471,6 +472,22 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         lofiEngine.setVolume(0);
       }
     }
+  };
+
+  const activeVolumeBlocks = isMuted || volume === 0
+    ? 0
+    : Math.max(1, Math.min(5, Math.ceil(volume / 20)));
+
+  const handleSetVolumeBlock = (index: number) => {
+    playBlipSound();
+    const targetLevel = index + 1;
+    if (!isMuted && activeVolumeBlocks === 1 && targetLevel === 1) {
+      handleToggleMute();
+      return;
+    }
+    setIsMuted(false);
+    const newVol = targetLevel * 20;
+    handleVolumeChange(newVol);
   };
 
   const handleToggleShuffle = async () => {
@@ -928,24 +945,61 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
             {/* Volume & Equalizer Spectrum */}
             <div className="space-y-1.5 pt-1 border-t border-[#191244]/20">
-              {/* Volume Slider & Auxiliary Controls */}
+              {/* 5-Discrete Pixel Volume Controls & Auxiliary Buttons */}
               <div className="flex items-center gap-2">
+                {/* Pixel Speaker Icon Button */}
                 <button
+                  type="button"
                   onClick={handleToggleMute}
-                  className="font-pixel text-[10px] text-[#191244] hover:text-[#fec5db] transition-colors cursor-pointer"
+                  title={isMuted || volume === 0 ? "Unmute" : "Mute"}
+                  className="hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center p-0.5 outline-none focus:outline-none"
                 >
-                  {isMuted || volume === 0 ? '🔇' : volume < 50 ? '🔉' : '🔊'}
+                  <PixelSpeakerIcon
+                    level={activeVolumeBlocks}
+                    isMuted={isMuted || volume === 0}
+                    rimColor={theme.accentPink}
+                    outlineColor={theme.primaryBorder}
+                  />
                 </button>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={isMuted ? 0 : volume}
-                  onChange={(e) => handleVolumeChange(parseInt(e.target.value, 10))}
-                  className="w-24 h-1.5 bg-[#191244] appearance-none cursor-pointer accent-[#fec5db]"
-                />
-                <span className="font-silkscreen text-[9px] text-[#191244] w-7">
-                  {isMuted ? '0%' : `${volume}%`}
+
+                {/* 5-Segment Pixel Volume Block Bar */}
+                <div
+                  className="flex items-center gap-[3px] p-[2.5px] rounded-[3px] border-2 shadow-[1px_1px_0px_#191244]"
+                  style={{
+                    backgroundColor: '#fffdf5',
+                    borderColor: theme.primaryBorder,
+                  }}
+                  role="group"
+                  aria-label="Volume level (5 options)"
+                >
+                  {[0, 1, 2, 3, 4].map((idx) => {
+                    const isFilled = idx < activeVolumeBlocks;
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => handleSetVolumeBlock(idx)}
+                        title={`Volume ${(idx + 1) * 20}%`}
+                        className="w-[14px] h-[10px] rounded-[1.5px] transition-all cursor-pointer hover:brightness-105 active:scale-95 outline-none focus:outline-none"
+                        style={{
+                          backgroundColor: isFilled ? theme.accentPink : '#ffffff',
+                          borderColor: isFilled ? theme.primaryBorder : `${theme.primaryBorder}44`,
+                          borderWidth: '1px',
+                          borderStyle: 'solid',
+                          boxShadow: isFilled
+                            ? 'inset 0 1px 0 rgba(255,255,255,0.7), inset 0 -1px 0 rgba(0,0,0,0.15)'
+                            : 'inset 0 1px 1px rgba(0,0,0,0.06)',
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+
+                <span
+                  className="font-silkscreen text-[9px] w-7 select-none"
+                  style={{ color: theme.textColor }}
+                >
+                  {isMuted || volume === 0 ? '0%' : `${activeVolumeBlocks * 20}%`}
                 </span>
 
                 <div className="ml-auto flex items-center gap-1.5">
