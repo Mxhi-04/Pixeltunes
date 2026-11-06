@@ -397,11 +397,11 @@ function startPersistentAuthServer() {
 
       // 10. /api/spotify/open-uri: open a Spotify track URI directly
       if (parsedUrl.pathname === '/api/spotify/open-uri') {
-        const uri = parsedUrl.query?.uri;
+        const uri = parsedUrl.searchParams.get('uri');
         if (uri) {
           const { exec } = require('child_process');
           if (process.platform === 'darwin') {
-            exec(`open "${uri}"`);
+            exec(`open -g -a Spotify "${uri}"`);
           } else {
             shell.openExternal(uri);
           }
@@ -564,7 +564,7 @@ ipcMain.handle('spotify:open-uri', (event, uri) => {
   if (uri) {
     const { exec } = require('child_process');
     if (process.platform === 'darwin') {
-      exec(`open "${uri}"`);
+      exec(`open -g -a Spotify "${uri}"`);
     } else {
       shell.openExternal(uri);
     }

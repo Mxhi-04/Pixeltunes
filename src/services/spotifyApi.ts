@@ -435,12 +435,38 @@ export async function playTrack(
   contextUri?: string
 ): Promise<boolean> {
   try {
-    let targetId = deviceId;
-    if (!targetId) {
-      const devices = await getDevices();
-      const active = devices.find((d) => d.is_active);
-      targetId = active?.id || (devices.length > 0 ? devices[0].id : undefined);
+    // 1. On macOS desktop, trigger Spotify directly via URI in background
+    if ((window as any).electronAPI?.openSpotifyUri) {
+      try {
+        await (window as any).electronAPI.openSpotifyUri(uri);
+      } catch (e) {}
+    } else {
+      try {
+        await fetch(`http://127.0.0.1:8888/api/spotify/open-uri?uri=${encodeURIComponent(uri)}`).catch(() => {});
+      } catch (e) {}
     }
+
+    // 2. Resolve active or computer device
+    let devices = await getDevices();
+    if (devices.length === 0) {
+      await new Promise((r) => setTimeout(r, 350));
+      devices = await getDevices();
+    }
+
+    const active = devices.find((d) => d.is_active);
+    const computer = devices.find((d) => d.type?.toLowerCase() === 'computer');
+    const target = deviceId
+      ? devices.find((d) => d.id === deviceId) || devices[0]
+      : (active || computer || devices[0]);
+
+    const targetId = target?.id;
+
+    // 3. If target is inactive, activate device
+    if (target && !target.is_active && targetId) {
+      await transferPlayback(targetId, true).catch(() => {});
+      await new Promise((r) => setTimeout(r, 300));
+    }
+
     const query = targetId ? `?device_id=${targetId}` : '';
     
     let body: any = {};

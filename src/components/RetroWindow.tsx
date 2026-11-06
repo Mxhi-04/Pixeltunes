@@ -230,13 +230,22 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     }
   }, [isSpotifyConnected, savedSpotifyTrack, spotifyPlayback?.item]);
 
-  // Sync and clear optimistic state whenever authoritative Spotify data arrives
+  // Sync and clear optimistic state whenever authoritative Spotify data arrives matching the active track
   useEffect(() => {
-    setOptimisticPlaying(null);
-  }, [spotifyPlayback?.is_playing, spotifyPlayback?.item?.id]);
+    if (
+      spotifyPlayback?.item?.id &&
+      savedSpotifyTrack?.id &&
+      (spotifyPlayback.item.id === savedSpotifyTrack.id || spotifyPlayback.item.name === savedSpotifyTrack.name)
+    ) {
+      setOptimisticPlaying(null);
+    }
+  }, [spotifyPlayback?.is_playing, spotifyPlayback?.item?.id, spotifyPlayback?.item?.name, savedSpotifyTrack?.id, savedSpotifyTrack?.name]);
 
-  // Determine active playback source (prefer live playback item, fallback to saved Spotify track when connected)
-  const activeSpotifyItem = spotifyPlayback?.item || (isSpotifyConnected ? savedSpotifyTrack : null);
+  // Determine active playback source (prefer optimistic track if user just clicked a track, else live item, fallback to saved)
+  const activeSpotifyItem =
+    (optimisticPlaying && savedSpotifyTrack ? savedSpotifyTrack : null) ||
+    spotifyPlayback?.item ||
+    (isSpotifyConnected ? savedSpotifyTrack : null);
   const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null;
   const isPlaying = optimisticPlaying !== null
     ? optimisticPlaying
@@ -609,8 +618,19 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               onClose={() => setShowQueue(false)}
               onOpenSpotifyModal={onOpenSpotifyModal}
               currentTrackTitle={currentTitle}
-              onTrackPlayed={() => {
-                if (onPollSpotify) onPollSpotify();
+              onTrackPlayed={(playedTrack) => {
+                if (playedTrack) {
+                  setSavedSpotifyTrack(playedTrack);
+                  setOptimisticPlaying(true);
+                  try {
+                    localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(playedTrack));
+                  } catch {}
+                }
+                if (onPollSpotify) {
+                  setTimeout(onPollSpotify, 400);
+                  setTimeout(onPollSpotify, 1000);
+                  setTimeout(onPollSpotify, 1800);
+                }
               }}
             />
           </div>

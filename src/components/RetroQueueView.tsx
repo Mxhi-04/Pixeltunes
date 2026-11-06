@@ -6,7 +6,7 @@ interface RetroQueueViewProps {
   isSpotifyConnected: boolean;
   onClose: () => void;
   onOpenSpotifyModal?: () => void;
-  onTrackPlayed?: () => void;
+  onTrackPlayed?: (track?: any) => void;
   currentTrackTitle?: string;
 }
 
@@ -118,6 +118,14 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
     setCurrentlyPlaying(track);
     setStatusMsg(`▶ Playing: ${track.name.slice(0, 16)}...`);
 
+    // Instantly notify parent RetroWindow to display this song on Pixeltunes
+    if (onTrackPlayed) {
+      onTrackPlayed(track);
+    }
+    try {
+      localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(track));
+    } catch {}
+
     // Find subsequent tracks in current playlist to pass to Spotify so queue is preserved
     const trackIdx = queueTracks.findIndex(
       (t) => (t.id && t.id === track.id) || (t.uri && t.uri === track.uri)
@@ -132,10 +140,6 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
 
     const success = await playTrack(track.uri, undefined, remainingUris);
     if (success) {
-      if (onTrackPlayed) onTrackPlayed();
-      try {
-        localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(track));
-      } catch {}
       setTimeout(() => {
         setStatusMsg(null);
         fetchQueue();
