@@ -1,5 +1,11 @@
 # 📻 PIXELTUNES — Aesthetic Retro Pixel Music Player
 
+[![Vercel](https://img.shields.io/badge/Vercel-Live%20Demo-black?style=for-the-badge&logo=vercel)](https://pixeltunes.vercel.app)
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github)](https://github.com/Mxhi-04/pixeltunes)
+
+🎮 **Live Web Application:** [https://pixeltunes.vercel.app](https://pixeltunes.vercel.app)  
+📦 **GitHub Repository:** [https://github.com/Mxhi-04/pixeltunes](https://github.com/Mxhi-04/pixeltunes)
+
 An authentic retro, pixel-art music player inspired by nostalgic 90s OS aesthetics, featuring dynamic Spotify Connect controls, 8-bit synthesizer audio fallback, animated pixel art scenes, custom pixel cursors with click sparks, border-fitted playlist queue, and real-time spectrum analysis. Built for both desktop (macOS Electron) and the Web (Vercel).
 
 ---

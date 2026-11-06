@@ -570,7 +570,19 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5">
+            {/* Vercel Web Link Button */}
+            <a
+              href="https://pixeltunes.vercel.app"
+              target="_blank"
+              rel="noreferrer"
+              title="Open Live Web Version on Vercel (https://pixeltunes.vercel.app)"
+              className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#9df0cf] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
+            >
+              <span className="text-[7px]">▲</span>
+              <span>WEB</span>
+            </a>
+
             {/* Menu Button */}
             <button
               onClick={() => {

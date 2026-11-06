@@ -334,6 +334,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </button>
           </div>
 
+          {/* Live Web App & GitHub Links */}
+          <div className="p-2.5 bg-[#fffdf5] border-2 border-[#191244] shadow-pixel-sm space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] leading-none">▲</span>
+                <span className="font-pixel text-[8px] font-bold text-[#191244]">
+                  VERCEL LIVE WEB APP:
+                </span>
+              </div>
+              <a
+                href="https://pixeltunes.vercel.app"
+                target="_blank"
+                rel="noreferrer"
+                className="px-2 py-0.5 bg-[#9df0cf] text-[#191244] border border-[#191244] font-pixel text-[7.5px] hover:bg-white font-bold cursor-pointer"
+              >
+                OPEN ↗
+              </a>
+            </div>
+            <a
+              href="https://pixeltunes.vercel.app"
+              target="_blank"
+              rel="noreferrer"
+              className="block font-silkscreen text-[8px] text-[#2c2269] hover:underline hover:text-[#ff7b90] truncate"
+            >
+              https://pixeltunes.vercel.app
+            </a>
+          </div>
+
           {/* Close */}
           <div className="pt-2 flex justify-end">
             <button
