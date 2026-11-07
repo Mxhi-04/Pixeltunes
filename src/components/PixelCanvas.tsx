@@ -1,11 +1,10 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { ArtMode, RETRO_COVERS } from '../types/covers';
+import { getPixelCoverForTrack, PixelCover } from '../types/covers';
 
 interface PixelCanvasProps {
   isPlaying: boolean;
   albumArtUrl?: string | null;
-  mode: ArtMode;
-  retroCoverId?: string;
+  mode: 'inspo' | 'pixelArt' | 'cassette';
   pixelResolution?: number;
   trackTitle?: string;
   artistName?: string;
@@ -17,11 +16,52 @@ interface PixelCanvasProps {
   };
 }
 
+// 1. Saturn Galaxy Stars Definition
+const SATURN_STARS = [
+  { x: 16, y: 28, baseColor: '#ffffff', peakColor: '#ffffff', speed: 0.08, offset: 0, size: 3 },
+  { x: 100, y: 26, baseColor: '#ffbde2', peakColor: '#ffffff', speed: 0.07, offset: 1.2, size: 3 },
+  { x: 225, y: 36, baseColor: '#e0f7ff', peakColor: '#ffffff', speed: 0.06, offset: 2.1, size: 3 },
+  { x: 24, y: 73, baseColor: '#c2f0ff', peakColor: '#ffffff', speed: 0.09, offset: 0.8, size: 3 },
+  { x: 132, y: 92, baseColor: '#ffffff', peakColor: '#ffffff', speed: 0.11, offset: 3.0, size: 2, isGlint: true },
+  { x: 24, y: 140, baseColor: '#ff9ee2', peakColor: '#ffffff', speed: 0.08, offset: 1.7, size: 3 },
+  { x: 208, y: 133, baseColor: '#ff80d5', peakColor: '#ffffff', speed: 0.07, offset: 2.7, size: 3 },
+  { x: 12, y: 183, baseColor: '#7ae5ff', peakColor: '#ffffff', speed: 0.06, offset: 0.4, size: 3 },
+  { x: 171, y: 195, baseColor: '#8ce8ff', peakColor: '#ffffff', speed: 0.08, offset: 3.4, size: 3 },
+  { x: 234, y: 224, baseColor: '#8ce8ff', peakColor: '#ffffff', speed: 0.10, offset: 1.5, size: 3 },
+  // Subtle ambient micro-stars in the cosmic sky
+  { x: 42, y: 18, baseColor: '#ffffff', peakColor: '#ffffff', speed: 0.12, offset: 2.2, size: 1 },
+  { x: 178, y: 20, baseColor: '#ffc8e8', peakColor: '#ffffff', speed: 0.09, offset: 0.5, size: 1 },
+  { x: 14, y: 110, baseColor: '#aeeaff', peakColor: '#ffffff', speed: 0.10, offset: 3.1, size: 1 },
+  { x: 228, y: 88, baseColor: '#ffffff', peakColor: '#ffffff', speed: 0.07, offset: 1.9, size: 1 },
+  { x: 80, y: 220, baseColor: '#8ce8ff', peakColor: '#ffffff', speed: 0.08, offset: 2.8, size: 1 },
+];
+
+// 2. Moon Bunny Stars Definition
+const BUNNY_STARS = [
+  { x: 12, y: 15, type: 'dot', color: 'white', speed: 0.05, offset: 0 },
+  { x: 26, y: 11, type: 'cross', color: 'white', speed: 0.04, offset: 1 },
+  { x: 18, y: 35, type: 'dot', color: 'pink', speed: 0.06, offset: 2 },
+  { x: 10, y: 65, type: 'cross', color: 'pink', speed: 0.03, offset: 3 },
+  { x: 22, y: 92, type: 'cross', color: 'white', speed: 0.05, offset: 4 },
+  { x: 15, y: 120, type: 'cross', color: 'white', speed: 0.04, offset: 0.5 },
+  { x: 24, y: 145, type: 'dot', color: 'pink', speed: 0.07, offset: 1.5 },
+  { x: 62, y: 10, type: 'cross', color: 'white', speed: 0.05, offset: 2.2 },
+  { x: 74, y: 16, type: 'cross', color: 'pink', speed: 0.04, offset: 3.1 },
+  { x: 105, y: 12, type: 'cross', color: 'white', speed: 0.03, offset: 1.8 },
+  { x: 118, y: 22, type: 'cross', color: 'pink', speed: 0.06, offset: 0.8 },
+  { x: 124, y: 80, type: 'cross', color: 'white', speed: 0.05, offset: 2.5 },
+  { x: 120, y: 115, type: 'cross', color: 'pink', speed: 0.04, offset: 3.5 },
+  { x: 126, y: 140, type: 'dot', color: 'white', speed: 0.06, offset: 1.2 },
+  { x: 108, y: 158, type: 'cross', color: 'pink', speed: 0.05, offset: 2.7 },
+  { x: 42, y: 160, type: 'dot', color: 'pink', speed: 0.04, offset: 0.9 },
+  { x: 92, y: 170, type: 'cross', color: 'white', speed: 0.03, offset: 1.7 },
+  { x: 116, y: 46, type: 'dot', color: 'white', speed: 0.07, offset: 3.3 },
+];
+
 export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   isPlaying,
   albumArtUrl,
   mode,
-  retroCoverId = 'nyan_cat',
   pixelResolution = 180,
   trackTitle = 'FLY ME TO THE MOON',
   artistName = 'PIXEL JAZZ TRIO',
@@ -35,35 +75,39 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
 
-  // Determine active Retro Animated Cover (user selected or song-hash fallback)
-  const isShowingRetroCover = mode === 'retroCover' || (mode === 'pixelArt' && !albumArtUrl);
-  const activeRetroCover = useMemo(() => {
-    if (mode === 'retroCover' && retroCoverId) {
-      return RETRO_COVERS.find((c) => c.id === retroCoverId) || RETRO_COVERS[0];
-    }
-    // Procedural track fallback: hash song title into one of the 20 legendary covers
-    let hash = 0;
-    const seed = trackTitle + artistName;
-    for (let i = 0; i < seed.length; i++) {
-      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
-    }
-    const idx = Math.abs(hash) % RETRO_COVERS.length;
-    return RETRO_COVERS[idx];
-  }, [mode, retroCoverId, trackTitle, artistName]);
-
-  // Cached image element of the currently active pixel cover (0ms draw in requestAnimationFrame)
+  // Cached image for Spotify Album Art (pixelArt mode)
   const cachedCoverImageRef = useRef<HTMLImageElement | null>(null);
   const [hasCoverLoaded, setHasCoverLoaded] = useState(false);
-
-  // Track the previous temporary cover file path on disk to delete it when song switches
   const previousTempFileRef = useRef<string | null>(null);
   const currentTrackKeyRef = useRef<string>('');
+
+  // Preloaded Saturn image ref for the new animated Saturn Galaxy cover
+  const saturnImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Pick the active Pixel Cover for this track (automatically rotates with each song)
+  const activePixelCover: PixelCover = useMemo(() => {
+    return getPixelCoverForTrack(trackTitle, artistName);
+  }, [trackTitle, artistName]);
+
+  // Preload the Saturn base cover image
+  useEffect(() => {
+    const img = new Image();
+    img.src = './covers/00_saturn_galaxy.png';
+    img.onload = () => {
+      saturnImgRef.current = img;
+    };
+    img.onerror = () => {
+      // Fallback relative root if needed
+      img.src = '/covers/00_saturn_galaxy.png';
+    };
+  }, []);
 
   const pixelSize = pixelResolution || 180;
   const trackKey = `${trackTitle}__${artistName}__${albumArtUrl || 'procedural'}__${pixelSize}`;
 
-  // Generate pixel music cover for each song, display it, and delete previous cover to free space
+  // Process Spotify Album Artwork (used in mode === 'pixelArt')
   useEffect(() => {
+    if (mode !== 'pixelArt') return;
     if (currentTrackKeyRef.current === trackKey && cachedCoverImageRef.current) {
       return;
     }
@@ -71,7 +115,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 
     let isCancelled = false;
 
-    // Helper: Safely delete old temporary cover file from disk
     const deleteOldCover = async () => {
       if (previousTempFileRef.current && window.electronAPI?.deleteTempCover) {
         const fileToDelete = previousTempFileRef.current;
@@ -85,9 +128,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     };
 
     const generateAndDisplayCover = async () => {
-      // 1. Delete previous track's cover file from disk to free up space
       await deleteOldCover();
-
       if (isCancelled) return;
 
       const offscreen = document.createElement('canvas');
@@ -95,11 +136,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
       offscreen.height = pixelSize;
       const ctx = offscreen.getContext('2d');
       if (!ctx) return;
-
       ctx.imageSmoothingEnabled = false;
 
       if (albumArtUrl) {
-        // --- Spotify Album Artwork Pixelation (High Clarity & True Vibrant Colors) ---
         const img = new Image();
         img.crossOrigin = 'anonymous';
         img.src = albumArtUrl;
@@ -110,73 +149,12 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         });
 
         if (isCancelled) return;
-
-        // Downsample to high-clarity pixel grid (e.g. 180x180 - over 10x more pixels than 56x56)
         ctx.drawImage(img, 0, 0, pixelSize, pixelSize);
       } else {
-        // --- Procedural 16-Bit Pixel Music Cover for Local / Lo-Fi Audio ---
-        // Hash track title for deterministic palette & scenery
-        let hash = 0;
-        const seedStr = trackTitle + artistName;
-        for (let i = 0; i < seedStr.length; i++) {
-          hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
-        }
-
-        const palettes = [
-          { sky: '#1f132e', ground: '#361545', accent: '#ff7b90', star: '#fec5db' },
-          { sky: '#0f172a', ground: '#1e1b4b', accent: '#38bdf8', star: '#e0f2fe' },
-          { sky: '#18181b', ground: '#27272a', accent: '#a855f7', star: '#f3e8ff' },
-          { sky: '#14213d', ground: '#000000', accent: '#fca311', star: '#ffffff' },
-        ];
-        const pal = palettes[Math.abs(hash) % palettes.length];
-
-        // Background Sky
-        ctx.fillStyle = pal.sky;
-        ctx.fillRect(0, 0, pixelSize, pixelSize);
-
-        // Retro Sun / Moon
-        const sunRadius = Math.floor(pixelSize * 0.24);
-        const sunX = Math.floor(pixelSize / 2);
-        const sunY = Math.floor(pixelSize * 0.38);
-        ctx.fillStyle = pal.accent;
-        for (let y = -sunRadius; y <= sunRadius; y += 2) {
-          for (let x = -sunRadius; x <= sunRadius; x += 2) {
-            if (x * x + y * y <= sunRadius * sunRadius) {
-              // Sunset horizontal lines in lower half of sun
-              if (y > 4 && y % 4 === 0) continue;
-              ctx.fillRect(sunX + x, sunY + y, 2, 2);
-            }
-          }
-        }
-
-        // Mountain Silhouette
-        ctx.fillStyle = pal.ground;
-        ctx.beginPath();
-        ctx.moveTo(0, pixelSize);
-        ctx.lineTo(0, Math.floor(pixelSize * 0.64));
-        ctx.lineTo(Math.floor(pixelSize * 0.28), Math.floor(pixelSize * 0.46));
-        ctx.lineTo(Math.floor(pixelSize * 0.6), Math.floor(pixelSize * 0.67));
-        ctx.lineTo(Math.floor(pixelSize * 0.82), Math.floor(pixelSize * 0.5));
-        ctx.lineTo(pixelSize, Math.floor(pixelSize * 0.6));
-        ctx.lineTo(pixelSize, pixelSize);
-        ctx.fill();
-
-        // Stars
-        ctx.fillStyle = pal.star;
-        for (let i = 0; i < 14; i++) {
-          const sx = ((Math.abs(hash * (i + 1) * 31)) % (pixelSize - 8)) + 4;
-          const sy = ((Math.abs(hash * (i + 1) * 17)) % Math.floor(pixelSize * 0.35)) + 4;
-          ctx.fillRect(sx, sy, 2, 2);
-        }
-
-        // Retro Grid Horizon
-        ctx.fillStyle = pal.accent;
-        ctx.fillRect(0, pixelSize - 16, pixelSize, 2);
-        ctx.fillRect(0, pixelSize - 8, pixelSize, 2);
-        ctx.fillRect(0, pixelSize - 2, pixelSize, 2);
+        // Fallback procedural retro cover when no Spotify album art
+        drawSynthwaveLandscape(ctx, pixelSize, pixelSize, trackTitle + artistName);
       }
 
-      // Upscale cleanly to 240x240 display canvas with crisp nearest-neighbor pixelation
       const exportCanvas = document.createElement('canvas');
       exportCanvas.width = 240;
       exportCanvas.height = 240;
@@ -188,7 +166,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 
       const dataUrl = exportCanvas.toDataURL('image/png');
 
-      // 2. Save new pixel cover to temporary disk file via Electron IPC
       if (window.electronAPI?.saveTempCover) {
         try {
           const savedPath = await window.electronAPI.saveTempCover(dataUrl, trackKey);
@@ -198,7 +175,6 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         }
       }
 
-      // 3. Cache image element for 60fps rendering in canvas animation loop
       const displayImg = new Image();
       displayImg.src = dataUrl;
       displayImg.onload = () => {
@@ -214,9 +190,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     return () => {
       isCancelled = true;
     };
-  }, [trackKey, albumArtUrl, trackTitle, artistName, pixelSize]);
+  }, [trackKey, albumArtUrl, trackTitle, artistName, pixelSize, mode]);
 
-  // Clean up any temporary cover file when component unmounts
+  // Clean up disk covers on unmount
   useEffect(() => {
     return () => {
       if (previousTempFileRef.current && window.electronAPI?.deleteTempCover) {
@@ -226,7 +202,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     };
   }, []);
 
-  // Canvas Drawing & 60FPS Animation Loop
+  // 60FPS Canvas Drawing & Animation Loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -235,122 +211,43 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 
     let frame = 0;
 
-    // Stars definition for Inspo Moon Bunny scene
-    const stars = [
-      { x: 12, y: 15, type: 'dot', color: 'white', speed: 0.05, offset: 0 },
-      { x: 26, y: 11, type: 'cross', color: 'white', speed: 0.04, offset: 1 },
-      { x: 18, y: 35, type: 'dot', color: 'pink', speed: 0.06, offset: 2 },
-      { x: 10, y: 65, type: 'cross', color: 'pink', speed: 0.03, offset: 3 },
-      { x: 22, y: 92, type: 'cross', color: 'white', speed: 0.05, offset: 4 },
-      { x: 15, y: 120, type: 'cross', color: 'white', speed: 0.04, offset: 0.5 },
-      { x: 24, y: 145, type: 'dot', color: 'pink', speed: 0.07, offset: 1.5 },
-      { x: 62, y: 10, type: 'cross', color: 'white', speed: 0.05, offset: 2.2 },
-      { x: 74, y: 16, type: 'cross', color: 'pink', speed: 0.04, offset: 3.1 },
-      { x: 105, y: 12, type: 'cross', color: 'white', speed: 0.03, offset: 1.8 },
-      { x: 118, y: 22, type: 'cross', color: 'pink', speed: 0.06, offset: 0.8 },
-      { x: 124, y: 80, type: 'cross', color: 'white', speed: 0.05, offset: 2.5 },
-      { x: 120, y: 115, type: 'cross', color: 'pink', speed: 0.04, offset: 3.5 },
-      { x: 126, y: 140, type: 'dot', color: 'white', speed: 0.06, offset: 1.2 },
-      { x: 108, y: 158, type: 'cross', color: 'pink', speed: 0.05, offset: 2.7 },
-      { x: 42, y: 160, type: 'dot', color: 'pink', speed: 0.04, offset: 0.9 },
-      { x: 92, y: 170, type: 'cross', color: 'white', speed: 0.03, offset: 1.7 },
-      { x: 116, y: 46, type: 'dot', color: 'white', speed: 0.07, offset: 3.3 },
-    ];
-
     const drawCanvas = () => {
       frame++;
       ctx.imageSmoothingEnabled = false;
       const w = canvas.width;
       const h = canvas.height;
 
-      // Clear with dark navy
-      ctx.fillStyle = themeColors.navy;
-      ctx.fillRect(0, 0, w, h);
+      // 1. CASSETTE TAPE MODE
+      if (mode === 'cassette') {
+        drawCassetteTape(ctx, w, h, frame, isPlaying);
+        return;
+      }
 
-      // 1. PRIMARY MODE: PIXEL MUSIC COVER (100% Clean - No text or shapes drawn over artwork)
+      // 2. SPOTIFY ART MODE (Pixelated Album Artwork)
       if (mode === 'pixelArt') {
         if (cachedCoverImageRef.current) {
           ctx.drawImage(cachedCoverImageRef.current, 0, 0, w, h);
         } else {
-          // Clean dark placeholder while generating
           ctx.fillStyle = themeColors.navy;
           ctx.fillRect(0, 0, w, h);
         }
         return;
       }
 
-      // 2. CASSETTE TAPE MODE
-      if (mode === 'cassette') {
-        drawCassetteTape(ctx, w, h, frame, isPlaying);
+      // 3. PIXEL ART MODE ('inspo') with automatic cover rotation!
+      if (activePixelCover.type === 'canvas_saturn') {
+        // User requested: New Saturn Galaxy cover with animated twinkling stars!
+        drawSaturnScene(ctx, w, h, frame, saturnImgRef.current);
         return;
       }
 
-      // 3. INSPO MOON BUNNY SCENE
-      stars.forEach((star) => {
-        const twinkle = Math.sin(frame * star.speed + star.offset);
-        if (twinkle < -0.6) return;
-        const col = star.color === 'pink' ? themeColors.pink : themeColors.cream;
-        ctx.fillStyle = col;
-        const sx = Math.floor(star.x * 1.5);
-        const sy = Math.floor(star.y * 1.5);
-        const pixelSize = 3;
-        if (star.type === 'dot') {
-          ctx.fillRect(sx, sy, pixelSize, pixelSize);
-        } else {
-          ctx.fillRect(sx, sy - pixelSize, pixelSize, pixelSize);
-          ctx.fillRect(sx - pixelSize, sy, pixelSize * 3, pixelSize);
-          ctx.fillRect(sx, sy + pixelSize, pixelSize, pixelSize);
-        }
-      });
-
-      // Draw Crescent Moon
-      const moonCenterX = Math.floor(w * 0.44);
-      const moonCenterY = Math.floor(h * 0.52);
-      const moonRadius = 68;
-      const innerRadius = 54;
-      const innerOffsetX = 24;
-      const pSize = 4;
-      ctx.fillStyle = themeColors.pink;
-
-      for (let y = moonCenterY - moonRadius; y <= moonCenterY + moonRadius; y += pSize) {
-        for (let x = moonCenterX - moonRadius; x <= moonCenterX + moonRadius; x += pSize) {
-          const distOuter = Math.hypot(x - moonCenterX, y - moonCenterY);
-          const distInner = Math.hypot(x - (moonCenterX + innerOffsetX), y - moonCenterY);
-          if (distOuter <= moonRadius && distInner >= innerRadius) {
-            ctx.fillRect(x, y, pSize, pSize);
-          }
-        }
+      if (activePixelCover.type === 'canvas_synthwave') {
+        drawSynthwaveScene(ctx, w, h, frame, isPlaying, trackTitle + artistName);
+        return;
       }
 
-      // Sitting Bunny Silhouette
-      ctx.strokeStyle = themeColors.periwinkle;
-      ctx.fillStyle = themeColors.navy;
-      ctx.lineWidth = 2.5;
-
-      const bunnyX = moonCenterX + 2;
-      const breath = isPlaying ? Math.sin(frame * 0.08) * 1.5 : 0;
-      const bunnyY = moonCenterY - 14 + breath;
-
-      ctx.beginPath();
-      ctx.rect(bunnyX, bunnyY, 5, 14);
-      ctx.rect(bunnyX + 6, bunnyY + 1, 5, 13);
-      ctx.rect(bunnyX - 2, bunnyY + 13, 15, 12);
-      ctx.fillStyle = themeColors.periwinkle;
-      ctx.fillRect(bunnyX + 1, bunnyY + 17, 2, 2);
-      ctx.fillStyle = themeColors.navy;
-      ctx.rect(bunnyX - 5, bunnyY + 24, 21, 16);
-      ctx.rect(bunnyX - 7, bunnyY + 28, 5, 6);
-      ctx.rect(bunnyX + 14, bunnyY + 34, 4, 4);
-      ctx.rect(bunnyX - 3, bunnyY + 39, 17, 7);
-      ctx.fill();
-      ctx.stroke();
-
-      if (isPlaying && frame % 60 < 30) {
-        ctx.fillStyle = themeColors.pink;
-        ctx.fillRect(bunnyX + 16, bunnyY - 6, 3, 3);
-        ctx.fillRect(bunnyX + 19, bunnyY - 9, 3, 3);
-        ctx.fillRect(bunnyX + 22, bunnyY - 6, 3, 3);
-      }
+      // Default canvas cover: Moon Bunny scene
+      drawMoonBunnyScene(ctx, w, h, frame, isPlaying, themeColors);
     };
 
     const render = () => {
@@ -365,65 +262,292 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [isPlaying, mode, hasCoverLoaded, themeColors]);
+  }, [isPlaying, mode, activePixelCover, hasCoverLoaded, themeColors, trackTitle, artistName]);
+
+  // If in Pixel Art mode and current track assigned a retro GIF: render directly with native pixelated GIF animation
+  if (mode === 'inspo' && activePixelCover.type === 'gif' && activePixelCover.src) {
+    return (
+      <div className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none">
+        <img
+          src={activePixelCover.src}
+          alt={activePixelCover.name}
+          className="w-full h-full object-contain pixelated select-none pointer-events-none"
+          style={{ imageRendering: 'pixelated' }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none">
-      {isShowingRetroCover ? (
-        <img
-          key={activeRetroCover.id}
-          src={activeRetroCover.gifUrl}
-          alt={activeRetroCover.name}
-          className="w-full h-full object-contain pixelated"
-        />
-      ) : (
-        <canvas
-          ref={canvasRef}
-          width={240}
-          height={240}
-          className="w-full h-full object-contain pixelated"
-        />
-      )}
+      <canvas
+        ref={canvasRef}
+        width={240}
+        height={240}
+        className="w-full h-full object-contain pixelated"
+      />
     </div>
   );
 };
 
-// Helper: Mini rotating pixel vinyl disc in the corner
-function drawMiniVinyl(ctx: CanvasRenderingContext2D, cx: number, cy: number, angle: number) {
-  const r = 16;
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(angle);
+// ==========================================
+// SCENE DRAWING FUNCTIONS
+// ==========================================
 
-  // Outer black record
-  ctx.fillStyle = '#100b20';
-  ctx.beginPath();
-  ctx.arc(0, 0, r, 0, Math.PI * 2);
-  ctx.fill();
+// 1. Saturn Galaxy Cover with Animated Twinkling Stars
+function drawSaturnScene(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  frame: number,
+  saturnImg: HTMLImageElement | null
+) {
+  if (saturnImg && saturnImg.complete && saturnImg.naturalWidth > 0) {
+    ctx.drawImage(saturnImg, 0, 0, w, h);
+  } else {
+    // Rich retro purple space background while loading
+    ctx.fillStyle = '#261b4d';
+    ctx.fillRect(0, 0, w, h);
+  }
 
-  // Grooves
-  ctx.strokeStyle = '#251b47';
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.75, 0, Math.PI * 2);
-  ctx.stroke();
+  // Draw twinkling stars
+  SATURN_STARS.forEach((star) => {
+    const twinkle = Math.sin(frame * star.speed + star.offset);
+    if (twinkle < -0.3) return; // Star is in dim phase
 
-  // Center pink label
-  ctx.fillStyle = '#fec5db';
-  ctx.beginPath();
-  ctx.arc(0, 0, r * 0.45, 0, Math.PI * 2);
-  ctx.fill();
+    const brightness = (twinkle + 0.3) / 1.3; // 0 to 1
+    const color = brightness > 0.65 ? star.peakColor : star.baseColor;
+    ctx.fillStyle = color;
 
-  // Spindle hole
-  ctx.fillStyle = '#100b20';
-  ctx.beginPath();
-  ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
-  ctx.fill();
+    const sx = Math.floor(star.x);
+    const sy = Math.floor(star.y);
 
-  ctx.restore();
+    if (star.size === 1) {
+      ctx.fillRect(sx, sy, 2, 2);
+    } else if (star.isGlint) {
+      // Shimmering planet surface diamond glint
+      const arm = brightness > 0.7 ? 3 : 2;
+      ctx.fillRect(sx - 1, sy - 1, 3, 3);
+      if (brightness > 0.5) {
+        ctx.fillRect(sx - arm, sy, arm * 2 + 1, 1);
+        ctx.fillRect(sx, sy - arm, 1, arm * 2 + 1);
+      }
+    } else {
+      // 4-pointed retro pixel cross star (+)
+      const arm = brightness > 0.75 ? 3 : brightness > 0.35 ? 2 : 1;
+      const core = brightness > 0.6 ? 2 : 1;
+      ctx.fillRect(sx - Math.floor(core / 2), sy - Math.floor(core / 2), core, core);
+      ctx.fillRect(sx - arm, sy, arm * 2 + 1, 1);
+      ctx.fillRect(sx, sy - arm, 1, arm * 2 + 1);
+    }
+  });
 }
 
-// Helper: Animated Cassette Tape Mode
+// 2. Moon Bunny Scene
+function drawMoonBunnyScene(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  frame: number,
+  isPlaying: boolean,
+  themeColors: { navy: string; pink: string; periwinkle: string; cream: string }
+) {
+  ctx.fillStyle = themeColors.navy;
+  ctx.fillRect(0, 0, w, h);
+
+  // Twinkling stars
+  BUNNY_STARS.forEach((star) => {
+    const twinkle = Math.sin(frame * star.speed + star.offset);
+    if (twinkle < -0.6) return;
+    const col = star.color === 'pink' ? themeColors.pink : themeColors.cream;
+    ctx.fillStyle = col;
+    const sx = Math.floor(star.x * 1.5);
+    const sy = Math.floor(star.y * 1.5);
+    const pixelSize = 3;
+    if (star.type === 'dot') {
+      ctx.fillRect(sx, sy, pixelSize, pixelSize);
+    } else {
+      ctx.fillRect(sx, sy - pixelSize, pixelSize, pixelSize);
+      ctx.fillRect(sx - pixelSize, sy, pixelSize * 3, pixelSize);
+      ctx.fillRect(sx, sy + pixelSize, pixelSize, pixelSize);
+    }
+  });
+
+  // Crescent Moon
+  const moonCenterX = Math.floor(w * 0.44);
+  const moonCenterY = Math.floor(h * 0.52);
+  const moonRadius = 68;
+  const innerRadius = 54;
+  const innerOffsetX = 24;
+  const pSize = 4;
+  ctx.fillStyle = themeColors.pink;
+
+  for (let y = moonCenterY - moonRadius; y <= moonCenterY + moonRadius; y += pSize) {
+    for (let x = moonCenterX - moonRadius; x <= moonCenterX + moonRadius; x += pSize) {
+      const distOuter = Math.hypot(x - moonCenterX, y - moonCenterY);
+      const distInner = Math.hypot(x - (moonCenterX + innerOffsetX), y - moonCenterY);
+      if (distOuter <= moonRadius && distInner >= innerRadius) {
+        ctx.fillRect(x, y, pSize, pSize);
+      }
+    }
+  }
+
+  // Sitting Bunny Silhouette
+  ctx.strokeStyle = themeColors.periwinkle;
+  ctx.fillStyle = themeColors.navy;
+  ctx.lineWidth = 2.5;
+
+  const bunnyX = moonCenterX + 2;
+  const breath = isPlaying ? Math.sin(frame * 0.08) * 1.5 : 0;
+  const bunnyY = moonCenterY - 14 + breath;
+
+  ctx.beginPath();
+  ctx.rect(bunnyX, bunnyY, 5, 14);
+  ctx.rect(bunnyX + 6, bunnyY + 1, 5, 13);
+  ctx.rect(bunnyX - 2, bunnyY + 13, 15, 12);
+  ctx.fillStyle = themeColors.periwinkle;
+  ctx.fillRect(bunnyX + 1, bunnyY + 17, 2, 2);
+  ctx.fillStyle = themeColors.navy;
+  ctx.rect(bunnyX - 5, bunnyY + 24, 21, 16);
+  ctx.rect(bunnyX - 7, bunnyY + 28, 5, 6);
+  ctx.rect(bunnyX + 14, bunnyY + 34, 4, 4);
+  ctx.rect(bunnyX - 3, bunnyY + 39, 17, 7);
+  ctx.fill();
+  ctx.stroke();
+
+  if (isPlaying && frame % 60 < 30) {
+    ctx.fillStyle = themeColors.pink;
+    ctx.fillRect(bunnyX + 16, bunnyY - 6, 3, 3);
+    ctx.fillRect(bunnyX + 19, bunnyY - 9, 3, 3);
+    ctx.fillRect(bunnyX + 22, bunnyY - 6, 3, 3);
+  }
+}
+
+// 3. Synthwave Sunset Scene
+function drawSynthwaveScene(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  frame: number,
+  isPlaying: boolean,
+  seedStr: string
+) {
+  let hash = 0;
+  for (let i = 0; i < seedStr.length; i++) {
+    hash = seedStr.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const palettes = [
+    { sky: '#1f132e', ground: '#361545', accent: '#ff7b90', star: '#fec5db' },
+    { sky: '#0f172a', ground: '#1e1b4b', accent: '#38bdf8', star: '#e0f2fe' },
+    { sky: '#18181b', ground: '#27272a', accent: '#a855f7', star: '#f3e8ff' },
+    { sky: '#14213d', ground: '#000000', accent: '#fca311', star: '#ffffff' },
+  ];
+  const pal = palettes[Math.abs(hash) % palettes.length];
+
+  ctx.fillStyle = pal.sky;
+  ctx.fillRect(0, 0, w, h);
+
+  // Retro Sun
+  const sunRadius = Math.floor(w * 0.24);
+  const sunX = Math.floor(w / 2);
+  const sunY = Math.floor(h * 0.38);
+  ctx.fillStyle = pal.accent;
+  for (let y = -sunRadius; y <= sunRadius; y += 2) {
+    for (let x = -sunRadius; x <= sunRadius; x += 2) {
+      if (x * x + y * y <= sunRadius * sunRadius) {
+        if (y > 4 && (y + Math.floor(frame * 0.05)) % 4 === 0) continue;
+        ctx.fillRect(sunX + x, sunY + y, 2, 2);
+      }
+    }
+  }
+
+  // Mountain Silhouette
+  ctx.fillStyle = pal.ground;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, Math.floor(h * 0.64));
+  ctx.lineTo(Math.floor(w * 0.28), Math.floor(h * 0.46));
+  ctx.lineTo(Math.floor(w * 0.6), Math.floor(h * 0.67));
+  ctx.lineTo(Math.floor(w * 0.82), Math.floor(h * 0.5));
+  ctx.lineTo(w, Math.floor(h * 0.6));
+  ctx.lineTo(w, h);
+  ctx.fill();
+
+  // Twinkling Stars
+  for (let i = 0; i < 14; i++) {
+    const sx = ((Math.abs(hash * (i + 1) * 31)) % (w - 12)) + 6;
+    const sy = ((Math.abs(hash * (i + 1) * 17)) % Math.floor(h * 0.36)) + 6;
+    const twinkle = Math.sin(frame * 0.06 + i);
+    if (twinkle > -0.2) {
+      ctx.fillStyle = twinkle > 0.5 ? '#ffffff' : pal.star;
+      const size = twinkle > 0.6 ? 3 : 2;
+      ctx.fillRect(sx, sy, size, size);
+    }
+  }
+
+  // Grid Horizon
+  ctx.fillStyle = pal.accent;
+  ctx.fillRect(0, h - 20, w, 2);
+  ctx.fillRect(0, h - 10, w, 2);
+  ctx.fillRect(0, h - 3, w, 2);
+}
+
+// Procedural Synthwave for fallback album art
+function drawSynthwaveLandscape(ctx: CanvasRenderingContext2D, w: number, h: number, seed: string) {
+  let hash = 0;
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const palettes = [
+    { sky: '#1f132e', ground: '#361545', accent: '#ff7b90', star: '#fec5db' },
+    { sky: '#0f172a', ground: '#1e1b4b', accent: '#38bdf8', star: '#e0f2fe' },
+    { sky: '#18181b', ground: '#27272a', accent: '#a855f7', star: '#f3e8ff' },
+    { sky: '#14213d', ground: '#000000', accent: '#fca311', star: '#ffffff' },
+  ];
+  const pal = palettes[Math.abs(hash) % palettes.length];
+
+  ctx.fillStyle = pal.sky;
+  ctx.fillRect(0, 0, w, h);
+
+  const sunRadius = Math.floor(w * 0.24);
+  const sunX = Math.floor(w / 2);
+  const sunY = Math.floor(h * 0.38);
+  ctx.fillStyle = pal.accent;
+  for (let y = -sunRadius; y <= sunRadius; y += 2) {
+    for (let x = -sunRadius; x <= sunRadius; x += 2) {
+      if (x * x + y * y <= sunRadius * sunRadius) {
+        if (y > 4 && y % 4 === 0) continue;
+        ctx.fillRect(sunX + x, sunY + y, 2, 2);
+      }
+    }
+  }
+
+  ctx.fillStyle = pal.ground;
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(0, Math.floor(h * 0.64));
+  ctx.lineTo(Math.floor(w * 0.28), Math.floor(h * 0.46));
+  ctx.lineTo(Math.floor(w * 0.6), Math.floor(h * 0.67));
+  ctx.lineTo(Math.floor(w * 0.82), Math.floor(h * 0.5));
+  ctx.lineTo(w, Math.floor(h * 0.6));
+  ctx.lineTo(w, h);
+  ctx.fill();
+
+  ctx.fillStyle = pal.star;
+  for (let i = 0; i < 14; i++) {
+    const sx = ((Math.abs(hash * (i + 1) * 31)) % (w - 8)) + 4;
+    const sy = ((Math.abs(hash * (i + 1) * 17)) % Math.floor(h * 0.35)) + 4;
+    ctx.fillRect(sx, sy, 2, 2);
+  }
+
+  ctx.fillStyle = pal.accent;
+  ctx.fillRect(0, h - 16, w, 2);
+  ctx.fillRect(0, h - 8, w, 2);
+  ctx.fillRect(0, h - 2, w, 2);
+}
+
+// 4. Animated Cassette Tape Mode
 function drawCassetteTape(
   ctx: CanvasRenderingContext2D,
   w: number,

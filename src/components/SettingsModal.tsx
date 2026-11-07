@@ -1,7 +1,6 @@
 import React from 'react';
 import { THEMES, RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
-import { ArtMode, RETRO_COVERS } from '../types/covers';
 import { playClickSound, setSoundEffectsEnabled } from '../services/soundEffects';
 
 interface SettingsModalProps {
@@ -9,12 +8,8 @@ interface SettingsModalProps {
   onClose: () => void;
   currentTheme: RetroTheme;
   onThemeSelect: (theme: RetroTheme) => void;
-  artMode: ArtMode;
-  onArtModeSelect: (mode: ArtMode) => void;
-  retroCoverId?: string;
-  onSelectRetroCover?: (id: string) => void;
-  autoCycleCovers?: boolean;
-  onToggleAutoCycle?: () => void;
+  artMode: 'inspo' | 'pixelArt' | 'cassette';
+  onArtModeSelect: (mode: 'inspo' | 'pixelArt' | 'cassette') => void;
   crtEnabled: boolean;
   onToggleCrt: () => void;
   soundEnabled: boolean;
@@ -38,10 +33,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onThemeSelect,
   artMode,
   onArtModeSelect,
-  retroCoverId = 'nyan_cat',
-  onSelectRetroCover,
-  autoCycleCovers = true,
-  onToggleAutoCycle,
   crtEnabled,
   onToggleCrt,
   soundEnabled,
@@ -158,115 +149,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <label className="block font-pixel text-[10px] mb-1.5">
               ART DISPLAY MODE:
             </label>
-            <div className="grid grid-cols-4 gap-1.5">
-              <button
-                type="button"
-                onClick={() => {
-                  playClickSound();
-                  onArtModeSelect('pixelArt');
-                }}
-                className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer ${
-                  artMode === 'pixelArt'
-                    ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm font-bold'
-                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                }`}
-              >
-                🎨 SPOTIFY
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  playClickSound();
-                  onArtModeSelect('retroCover');
-                }}
-                className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer ${
-                  artMode === 'retroCover'
-                    ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm font-bold'
-                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                }`}
-              >
-                🎮 RETRO
-              </button>
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('inspo');
                 }}
-                className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer ${
+                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
                   artMode === 'inspo'
-                    ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm font-bold'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                🌙 BUNNY
+                ✨ PIXEL ART
               </button>
               <button
-                type="button"
+                onClick={() => {
+                  playClickSound();
+                  onArtModeSelect('pixelArt');
+                }}
+                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all ${
+                  artMode === 'pixelArt'
+                    ? 'bg-[#191244] text-[#fec5db] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244]'
+                }`}
+              >
+                🎨 SPOTIFY ART
+              </button>
+              <button
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('cassette');
                 }}
-                className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer ${
+                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all ${
                   artMode === 'cassette'
-                    ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm font-bold'
-                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                    ? 'bg-[#191244] text-[#fec5db] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244]'
                 }`}
               >
-                📼 TAPE
+                📼 CASSETTE
               </button>
             </div>
           </div>
-
-          {/* Retro Animated Covers Gallery (20 Covers) */}
-          {artMode === 'retroCover' && (
-            <div className="p-2.5 bg-[#191244] border-2 border-[#191244] text-[#fffdf5] space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-pixel text-[9px] text-[#9df0cf]">
-                  SELECT RETRO ANIMATION (20 COVERS):
-                </span>
-                {onToggleAutoCycle && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      playClickSound();
-                      onToggleAutoCycle();
-                    }}
-                    className="font-pixel text-[8px] text-[#ffd269] flex items-center gap-1 hover:text-white cursor-pointer"
-                  >
-                    <span>AUTO-CYCLE ON TRACK:</span>
-                    <span className="underline">{autoCycleCovers ? '[ON ✓]' : '[OFF]'}</span>
-                  </button>
-                )}
-              </div>
-
-              {/* Grid of 20 animated retro covers */}
-              <div className="grid grid-cols-5 gap-1.5 max-h-[140px] overflow-y-auto pr-1">
-                {RETRO_COVERS.map((cover) => (
-                  <button
-                    key={cover.id}
-                    type="button"
-                    onClick={() => {
-                      playClickSound();
-                      if (onSelectRetroCover) onSelectRetroCover(cover.id);
-                    }}
-                    className={`p-1 border text-center transition-all cursor-pointer flex flex-col items-center justify-between ${
-                      retroCoverId === cover.id
-                        ? 'bg-[#9df0cf] text-[#191244] border-white shadow-pixel-xs font-bold'
-                        : 'bg-[#2c2269] text-[#fec5db] border-[#8fa2d4]/40 hover:bg-[#3a2f85]'
-                    }`}
-                  >
-                    <div className="w-10 h-10 bg-black/60 border border-[#191244] overflow-hidden mb-1 flex items-center justify-center">
-                      <img src={cover.gifUrl} alt={cover.name} className="w-full h-full object-contain pixelated" />
-                    </div>
-                    <span className="font-pixel text-[7px] truncate max-w-full leading-tight">
-                      {cover.name}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           {/* Theme Palette */}
           <div>

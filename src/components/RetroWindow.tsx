@@ -7,7 +7,6 @@ import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
 import { PixelMenuButton } from './PixelMenuButton';
 import { RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
-import { ArtMode } from '../types/covers';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
 import {
   playSpotify,
@@ -32,10 +31,8 @@ import {
 
 interface RetroWindowProps {
   theme: RetroTheme;
-  artMode: ArtMode;
+  artMode: 'inspo' | 'pixelArt' | 'cassette';
   onCycleArtMode: () => void;
-  retroCoverId?: string;
-  onCycleRetroCover?: () => void;
   pixelResolution?: number;
   windowTitle: string;
   titleEmojis?: string;
@@ -66,8 +63,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   theme,
   artMode,
   onCycleArtMode,
-  retroCoverId,
-  onCycleRetroCover,
   pixelResolution = 180,
   windowTitle,
   titleEmojis = '𐙚 ⊹₊⋆☆',
@@ -713,23 +708,11 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               className="w-[210px] h-[210px] border-4 p-1.5 bg-[#8fa2d4] shadow-pixel-sm shrink-0"
               style={{ borderColor: theme.primaryBorder }}
             >
-              <div
-                onClick={() => {
-                  if (artMode === 'retroCover' && onCycleRetroCover) {
-                    playClickSound();
-                    onCycleRetroCover();
-                  }
-                }}
-                title={artMode === 'retroCover' ? "Click to switch Retro Game Cover!" : undefined}
-                className={`w-full h-full border-2 border-[#191244] relative group overflow-hidden ${
-                  artMode === 'retroCover' ? 'cursor-pointer hover:opacity-95' : ''
-                }`}
-              >
+              <div className="w-full h-full border-2 border-[#191244] relative group overflow-hidden">
                 <PixelCanvas
                   isPlaying={isPlaying}
                   albumArtUrl={albumArtUrl}
                   mode={artMode}
-                  retroCoverId={retroCoverId}
                   pixelResolution={pixelResolution}
                   trackTitle={currentTitle}
                   artistName={currentArtist}

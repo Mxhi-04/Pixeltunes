@@ -356,6 +356,44 @@ function startPersistentAuthServer() {
         }
       }
 
+      // /api/click-next: skip to next song
+      if (parsedUrl.pathname === '/api/click-next') {
+        if (mainWindow) {
+          try {
+            await mainWindow.webContents.executeJavaScript(`
+              (() => {
+                const btn = document.querySelector('button[title="Next Track"]');
+                if (btn) btn.click();
+              })()
+            `);
+            res.writeHead(200);
+            res.end('next clicked');
+            return;
+          } catch (e) {
+            console.error('[Next Error]', e);
+          }
+        }
+      }
+
+      // /api/click-prev: skip to previous song
+      if (parsedUrl.pathname === '/api/click-prev') {
+        if (mainWindow) {
+          try {
+            await mainWindow.webContents.executeJavaScript(`
+              (() => {
+                const btn = document.querySelector('button[title="Previous Track"]');
+                if (btn) btn.click();
+              })()
+            `);
+            res.writeHead(200);
+            res.end('prev clicked');
+            return;
+          } catch (e) {
+            console.error('[Prev Error]', e);
+          }
+        }
+      }
+
       // /api/open-settings: open settings modal
       if (parsedUrl.pathname === '/api/open-settings') {
         if (mainWindow) {

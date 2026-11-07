@@ -1,32 +1,46 @@
-export type ArtMode = 'pixelArt' | 'retroCover' | 'inspo' | 'cassette';
-
-export interface RetroCover {
+export interface PixelCover {
   id: string;
   name: string;
-  franchise: string;
-  filename: string;
-  gifUrl: string;
+  type: 'canvas_saturn' | 'canvas_bunny' | 'canvas_synthwave' | 'gif';
+  src?: string;
 }
 
-export const RETRO_COVERS: RetroCover[] = [
-  { id: 'nyan_cat', name: 'NYAN CAT', franchise: 'Nyan Cat (2011)', filename: '01_nyan_cat.gif', gifUrl: './covers/01_nyan_cat.gif' },
-  { id: 'pokemon_pikachu', name: 'PIKACHU', franchise: 'Pokémon', filename: '02_pokemon_pikachu.gif', gifUrl: './covers/02_pokemon_pikachu.gif' },
-  { id: 'pokemon_gengar', name: 'GENGAR', franchise: 'Pokémon', filename: '03_pokemon_gengar.gif', gifUrl: './covers/03_pokemon_gengar.gif' },
-  { id: 'kirby_warpstar', name: 'KIRBY', franchise: 'Kirby Dream Land', filename: '04_kirby_warpstar.gif', gifUrl: './covers/04_kirby_warpstar.gif' },
-  { id: 'mario_question_block', name: 'SUPER MARIO', franchise: 'Super Mario Bros.', filename: '05_mario_question_block.gif', gifUrl: './covers/05_mario_question_block.gif' },
-  { id: 'zelda_triforce', name: 'ZELDA', franchise: 'The Legend of Zelda', filename: '06_zelda_triforce.gif', gifUrl: './covers/06_zelda_triforce.gif' },
-  { id: 'sonic_green_hill', name: 'SONIC', franchise: 'Sonic the Hedgehog', filename: '07_sonic_green_hill.gif', gifUrl: './covers/07_sonic_green_hill.gif' },
-  { id: 'pacman_arcade', name: 'PAC-MAN', franchise: 'Pac-Man Arcade', filename: '08_pacman_arcade.gif', gifUrl: './covers/08_pacman_arcade.gif' },
-  { id: 'space_invaders', name: 'INVADERS', franchise: 'Space Invaders', filename: '09_space_invaders.gif', gifUrl: './covers/09_space_invaders.gif' },
-  { id: 'megaman_charging', name: 'MEGA MAN', franchise: 'Mega Man', filename: '10_megaman_charging.gif', gifUrl: './covers/10_megaman_charging.gif' },
-  { id: 'metroid_samus', name: 'SAMUS', franchise: 'Metroid', filename: '11_metroid_samus.gif', gifUrl: './covers/11_metroid_samus.gif' },
-  { id: 'tamagotchi_pet', name: 'TAMAGOTCHI', franchise: 'Tamagotchi', filename: '12_tamagotchi_pet.gif', gifUrl: './covers/12_tamagotchi_pet.gif' },
-  { id: 'chocobo_field', name: 'CHOCOBO', franchise: 'Final Fantasy', filename: '13_chocobo_field.gif', gifUrl: './covers/13_chocobo_field.gif' },
-  { id: 'earthbound_onett', name: 'EARTHBOUND', franchise: 'EarthBound / Mother 2', filename: '14_earthbound_onett.gif', gifUrl: './covers/14_earthbound_onett.gif' },
-  { id: 'castlevania_moon', name: 'CASTLEVANIA', franchise: 'Castlevania', filename: '15_castlevania_moon.gif', gifUrl: './covers/15_castlevania_moon.gif' },
-  { id: 'tetris_matrix', name: 'TETRIS', franchise: 'Tetris', filename: '16_tetris_matrix.gif', gifUrl: './covers/16_tetris_matrix.gif' },
-  { id: 'donkey_kong', name: 'DONKEY KONG', franchise: 'Donkey Kong (1981)', filename: '17_donkey_kong.gif', gifUrl: './covers/17_donkey_kong.gif' },
-  { id: 'chrono_campfire', name: 'CHRONO TRIGGER', franchise: 'Chrono Trigger', filename: '18_chrono_campfire.gif', gifUrl: './covers/18_chrono_campfire.gif' },
-  { id: 'undertale_dog', name: 'UNDERTALE', franchise: 'Undertale', filename: '19_undertale_dog.gif', gifUrl: './covers/19_undertale_dog.gif' },
-  { id: 'stardew_farm', name: 'STARDEW VALLEY', franchise: 'Stardew Valley', filename: '20_stardew_farm.gif', gifUrl: './covers/20_stardew_farm.gif' },
+export const PIXEL_COVERS: PixelCover[] = [
+  { id: 'saturn_galaxy', name: 'Saturn Galaxy', type: 'canvas_saturn', src: './covers/00_saturn_galaxy.png' },
+  { id: 'moon_bunny', name: 'Moon Bunny', type: 'canvas_bunny' },
+  { id: 'retro_synthwave', name: 'Synthwave Sunset', type: 'canvas_synthwave' },
+  { id: 'nyan_cat', name: 'Nyan Cat', type: 'gif', src: './covers/01_nyan_cat.gif' },
+  { id: 'kirby_warpstar', name: 'Kirby Warpstar', type: 'gif', src: './covers/04_kirby_warpstar.gif' },
+  { id: 'pokemon_pikachu', name: 'Pikachu', type: 'gif', src: './covers/02_pokemon_pikachu.gif' },
+  { id: 'pokemon_gengar', name: 'Gengar', type: 'gif', src: './covers/03_pokemon_gengar.gif' },
+  { id: 'zelda_triforce', name: 'Zelda Triforce', type: 'gif', src: './covers/06_zelda_triforce.gif' },
+  { id: 'sonic_green_hill', name: 'Sonic Green Hill', type: 'gif', src: './covers/07_sonic_green_hill.gif' },
+  { id: 'castlevania_moon', name: 'Castlevania Moon', type: 'gif', src: './covers/15_castlevania_moon.gif' },
+  { id: 'chrono_campfire', name: 'Chrono Campfire', type: 'gif', src: './covers/18_chrono_campfire.gif' },
+  { id: 'stardew_farm', name: 'Stardew Valley', type: 'gif', src: './covers/20_stardew_farm.gif' },
+  { id: 'tamagotchi_pet', name: 'Tamagotchi Pet', type: 'gif', src: './covers/12_tamagotchi_pet.gif' },
+  { id: 'mario_block', name: 'Super Mario', type: 'gif', src: './covers/05_mario_question_block.gif' },
+  { id: 'tetris_matrix', name: 'Tetris Matrix', type: 'gif', src: './covers/16_tetris_matrix.gif' },
+  { id: 'earthbound_onett', name: 'EarthBound', type: 'gif', src: './covers/14_earthbound_onett.gif' },
+  { id: 'undertale_dog', name: 'Undertale Dog', type: 'gif', src: './covers/19_undertale_dog.gif' },
 ];
+
+/**
+ * Deterministically pick a pixel cover based on song title & artist.
+ * Ensures the cover is stable throughout the track and automatically rotates with each new song.
+ */
+export function getPixelCoverForTrack(trackTitle: string, artistName: string = ''): PixelCover {
+  const normTitle = (trackTitle || '').trim().toLowerCase();
+  // Ensure the default initial track features the user's new Saturn galaxy artwork!
+  if (normTitle.includes('fly me to the moon') || !normTitle) {
+    return PIXEL_COVERS[0]; // saturn_galaxy
+  }
+  let hash = 0;
+  const seed = `${normTitle}__${(artistName || '').trim().toLowerCase()}`;
+  for (let i = 0; i < seed.length; i++) {
+    hash = (hash << 5) - hash + seed.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % PIXEL_COVERS.length;
+  return PIXEL_COVERS[index];
+}

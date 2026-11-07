@@ -6,7 +6,6 @@ import { SettingsModal } from './components/SettingsModal';
 import { QuickConnectModal } from './components/QuickConnectModal';
 import { THEMES, RetroTheme } from './types/theme';
 import { SCALES, PlayerScale } from './types/scale';
-import { ArtMode, RETRO_COVERS } from './types/covers';
 import { SpotifyPlaybackState } from './types/spotify';
 import { lofiEngine } from './services/lofiAudio';
 import {
@@ -32,9 +31,7 @@ const DEFAULT_WINDOW_TITLE = 'PIXELTUNES';
 export const App: React.FC = () => {
   // Theme & Aesthetic State
   const [currentTheme, setCurrentTheme] = useState<RetroTheme>(THEMES.inspo);
-  const [artMode, setArtMode] = useState<ArtMode>('retroCover');
-  const [retroCoverId, setRetroCoverId] = useState<string>('nyan_cat');
-  const [autoCycleCovers, setAutoCycleCovers] = useState<boolean>(true);
+  const [artMode, setArtMode] = useState<'inspo' | 'pixelArt' | 'cassette'>('inspo');
   const [pixelResolution, setPixelResolution] = useState<number>(180);
   const [scale, setScale] = useState<PlayerScale>('standard');
   const [crtEnabled, setCrtEnabled] = useState(true);
@@ -217,19 +214,9 @@ export const App: React.FC = () => {
   // Cycle Art Mode Helper
   const handleCycleArtMode = () => {
     setArtMode((prev) => {
-      if (prev === 'pixelArt') return 'retroCover';
-      if (prev === 'retroCover') return 'inspo';
-      if (prev === 'inspo') return 'cassette';
-      return 'pixelArt';
-    });
-  };
-
-  // Cycle Retro Animated Cover Helper
-  const handleCycleRetroCover = () => {
-    setRetroCoverId((prev) => {
-      const idx = RETRO_COVERS.findIndex((c) => c.id === prev);
-      const nextIdx = (idx + 1) % RETRO_COVERS.length;
-      return RETRO_COVERS[nextIdx].id;
+      if (prev === 'inspo') return 'pixelArt';
+      if (prev === 'pixelArt') return 'cassette';
+      return 'inspo';
     });
   };
 
@@ -299,8 +286,6 @@ export const App: React.FC = () => {
             theme={currentTheme}
             artMode={artMode}
             onCycleArtMode={handleCycleArtMode}
-            retroCoverId={retroCoverId}
-            onCycleRetroCover={handleCycleRetroCover}
             pixelResolution={pixelResolution}
             windowTitle={windowTitle}
             titleEmojis={titleEmojis}
@@ -341,10 +326,6 @@ export const App: React.FC = () => {
             onThemeSelect={setCurrentTheme}
             artMode={artMode}
             onArtModeSelect={setArtMode}
-            retroCoverId={retroCoverId}
-            onSelectRetroCover={setRetroCoverId}
-            autoCycleCovers={autoCycleCovers}
-            onToggleAutoCycle={() => setAutoCycleCovers(!autoCycleCovers)}
             pixelResolution={pixelResolution}
             onPixelResolutionChange={setPixelResolution}
             crtEnabled={crtEnabled}
