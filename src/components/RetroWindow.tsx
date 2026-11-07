@@ -4,6 +4,7 @@ import { RetroQueueView } from './RetroQueueView';
 import { PixelVisualizer } from './PixelVisualizer';
 import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
+import { PixelMenuButton } from './PixelMenuButton';
 import { RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
@@ -658,17 +659,13 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               <span>WEB</span>
             </a>
 
-            {/* Menu Button */}
-            <button
+            {/* Retro Pixel Menu Button */}
+            <PixelMenuButton
               onClick={() => {
                 playClickSound();
                 onOpenSettingsModal();
               }}
-              title="Menu / Settings"
-              className="p-1 hover:bg-white/40 active:translate-y-0.5 transition-all text-[#191244] font-bold text-sm cursor-pointer"
-            >
-              ☰
-            </button>
+            />
           </div>
         </div>
       </div>

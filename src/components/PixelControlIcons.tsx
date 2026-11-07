@@ -97,3 +97,4 @@ export const PixelRepeatIcon: React.FC<PixelRepeatIconProps> = ({
     </svg>
   );
 };
+
