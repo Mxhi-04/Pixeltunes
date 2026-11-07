@@ -175,11 +175,8 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
       <div className="w-[640px] max-w-[95%] max-h-[385px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden">
         {/* Fixed Header Bar */}
         <div className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#ff7b90] border-2 border-[#191244]" />
-            <div className="w-3 h-3 rounded-full bg-[#ffd269] border-2 border-[#191244]" />
-            <div className="w-3 h-3 rounded-full bg-[#9df0cf] border-2 border-[#191244]" />
-            <span className="ml-1.5 font-pixel text-xs text-[#191244] tracking-wider font-bold">
+          <div className="flex items-center gap-1.5">
+            <span className="font-pixel text-xs text-[#191244] tracking-wider font-bold">
               SPOTIFY.SETUP
             </span>
           </div>
