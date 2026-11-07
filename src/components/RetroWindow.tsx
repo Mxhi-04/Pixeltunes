@@ -50,16 +50,13 @@ interface RetroWindowProps {
   isModalOpen?: boolean;
 }
 
-function getFormattedDigitalTime(): { time: string; period: string } {
+function getFormattedDigitalTime(): { time: string } {
   const now = new Date();
-  let hours = now.getHours();
+  const hours = now.getHours();
   const minutes = now.getMinutes();
-  const period = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  if (hours === 0) hours = 12;
   const hStr = hours < 10 ? `0${hours}` : `${hours}`;
   const mStr = minutes < 10 ? `0${minutes}` : `${minutes}`;
-  return { time: `${hStr}:${mStr}`, period };
+  return { time: `${hStr}:${mStr}` };
 }
 
 export const RetroWindow: React.FC<RetroWindowProps> = ({
@@ -634,20 +631,17 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           </div>
         </div>
 
-        {/* Right Header: 7-Segment Digital Clock & Actions */}
+        {/* Right Header: 7-Segment Digital Clock (24h) & Actions */}
         <div className="flex items-center gap-2 app-no-drag">
           <div
             className="text-sm font-bold text-[#191244] select-none flex items-center"
-            title="Local Time"
+            title="Local Time (24h)"
           >
             <span
               className="italic tracking-wider"
               style={{ fontFamily: '"DSEG7Classic", monospace' }}
             >
               {digitalTime.time}
-            </span>
-            <span className="font-pixel text-[10px] font-bold not-italic tracking-normal text-[#191244] ml-1.5 select-none">
-              {digitalTime.period}
             </span>
           </div>
 
