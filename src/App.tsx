@@ -127,59 +127,29 @@ export const App: React.FC = () => {
 
     checkInitialAuth();
 
-    const handleAuthSuccess = (name?: string) => {
-      setIsSpotifyConnected(true);
-      setShowQuickConnect(false);
-      setNeedsScopeUpgrade(false);
-      const finalName = (name || 'SPOTIFY USER').toUpperCase();
-      setUserName(finalName);
-      setStoredUserName(finalName);
-      confetti({
-        particleCount: 80,
-        spread: 60,
-        origin: { y: 0.6 },
-        colors: ['#fec5db', '#8fa2d4', '#9df0cf', '#ffd269'],
-      });
-      syncFirstLikedSong();
-    };
-
     // 2. Subscribe to Electron PKCE auth callback (zero reload, instant seamless sync)
     let unsubscribeUpdated: (() => void) | undefined;
     if (window.electronAPI?.onAuthTokenUpdated) {
       unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated(async (payload) => {
-        handleAuthSuccess(payload.user_name);
+        setIsSpotifyConnected(true);
+        setShowQuickConnect(false);
+        setNeedsScopeUpgrade(false);
+        const name = (payload.user_name || 'SPOTIFY USER').toUpperCase();
+        setUserName(name);
+        setStoredUserName(name);
+        confetti({
+          particleCount: 80,
+          spread: 60,
+          origin: { y: 0.6 },
+          colors: ['#fec5db', '#8fa2d4', '#9df0cf', '#ffd269'],
+        });
+
+        // As soon as Pixeltunes is connected, pause on the first liked song playlist of the user!
+        syncFirstLikedSong();
       });
     }
 
-    // 3. Window focus check (whenever user switches back from Spotify authorize tab)
-    const handleFocusCheck = async () => {
-      const { valid, user, needsScopeUpgrade: upgradeRequired } = await validateSpotifyToken();
-      if (valid && user && !upgradeRequired) {
-        handleAuthSuccess(user);
-      }
-    };
-    window.addEventListener('focus', handleFocusCheck);
-
-    // 4. Background polling while connecting/open
-    const pollAuth = setInterval(async () => {
-      const { valid, user, needsScopeUpgrade: upgradeRequired } = await validateSpotifyToken();
-      if (valid && user && !upgradeRequired) {
-        handleAuthSuccess(user);
-      }
-    }, 1200);
-
-    // 5. BroadcastChannel for cross-tab web sync
-    let bc: BroadcastChannel | null = null;
-    try {
-      bc = new BroadcastChannel('pixeltunes_auth');
-      bc.onmessage = (e) => {
-        if (e.data?.type === 'CONNECTED') {
-          handleAuthSuccess(e.data.user);
-        }
-      };
-    } catch {}
-
-    // 6. Subscribe to invalid_grant revocation (shows non-blocking reconnect button)
+    // 3. Subscribe to invalid_grant revocation (shows non-blocking reconnect button)
     const unsubscribeRevoked = onSessionRevoked(() => {
       setIsSpotifyConnected(false);
       setSpotifyPlayback(null);
@@ -188,9 +158,6 @@ export const App: React.FC = () => {
 
     return () => {
       if (unsubscribeUpdated) unsubscribeUpdated();
-      window.removeEventListener('focus', handleFocusCheck);
-      clearInterval(pollAuth);
-      if (bc) bc.close();
       unsubscribeRevoked();
     };
   }, [syncFirstLikedSong]);

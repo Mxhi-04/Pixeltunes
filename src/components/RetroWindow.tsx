@@ -3,6 +3,7 @@ import { PixelCanvas } from './PixelCanvas';
 import { RetroQueueView } from './RetroQueueView';
 import { PixelVisualizer } from './PixelVisualizer';
 import { PixelSpeakerIcon } from './PixelSpeakerIcon';
+import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
 import { RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
@@ -226,7 +227,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     }
   }, [initialLikedTrack]);
 
-  // Whenever authoritative Spotify item is actively playing, update saved track
+  // Whenever authoritative Spotify item is active, update saved track unless user just clicked another track
   useEffect(() => {
     if (spotifyPlayback?.item) {
       if (selectedTrack && Date.now() - selectedTimestamp < 5000) {
@@ -240,15 +241,12 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         return;
       }
 
-      // Only overwrite saved track if Spotify is actively playing
-      if (spotifyPlayback.is_playing) {
-        setSavedSpotifyTrack(spotifyPlayback.item);
-        try {
-          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
-        } catch {}
-      }
+      setSavedSpotifyTrack(spotifyPlayback.item);
+      try {
+        localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
+      } catch {}
     }
-  }, [spotifyPlayback?.item, spotifyPlayback?.is_playing, selectedTrack, selectedTimestamp]);
+  }, [spotifyPlayback?.item, selectedTrack, selectedTimestamp]);
 
   // Whenever Pixeltunes is opened: pause on the first song of user's Liked Songs playlist
   useEffect(() => {
@@ -294,12 +292,10 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   // 2. Authoritative live Spotify playback item
   // 3. Saved / First Liked track
   const isRecentSelection = selectedTrack && Date.now() - selectedTimestamp < 5000;
-  const isActivelyPlaying = Boolean(spotifyPlayback?.is_playing);
   const activeSpotifyItem =
     (isRecentSelection ? selectedTrack : null) ||
-    (isActivelyPlaying ? spotifyPlayback?.item : null) ||
-    (isSpotifyConnected ? savedSpotifyTrack : null) ||
-    spotifyPlayback?.item;
+    spotifyPlayback?.item ||
+    (isSpotifyConnected ? savedSpotifyTrack : null);
   const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null;
   const isPlaying = optimisticPlaying !== null
     ? optimisticPlaying
@@ -952,32 +948,24 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             <div className="space-y-1.5 pt-1 border-t border-[#191244]/20">
               {/* 5-Discrete Pixel Volume Controls & Auxiliary Buttons */}
               <div className="flex items-center gap-2">
-                {/* Pixel Speaker Icon Button (Framed Retro Button Matching Toolbar) */}
+                {/* Pixel Speaker Icon Button */}
                 <button
                   type="button"
                   onClick={handleToggleMute}
                   title={isMuted || volume === 0 ? "Unmute" : "Mute"}
-                  className={`p-1.5 border shadow-[1px_1px_0px_#191244] cursor-pointer rounded-[2px] transition-transform active:translate-y-0.5 flex items-center justify-center outline-none focus:outline-none ${
-                    isMuted || volume === 0
-                      ? 'bg-[#fffdf5] opacity-60 hover:opacity-100 hover:bg-[#fec5db]'
-                      : 'bg-[#fffdf5] hover:bg-[#fec5db]'
-                  }`}
-                  style={{
-                    borderColor: theme.primaryBorder,
-                    color: theme.textColor,
-                  }}
+                  className="hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center p-0.5 outline-none focus:outline-none"
                 >
                   <PixelSpeakerIcon
                     level={activeVolumeBlocks}
                     isMuted={isMuted || volume === 0}
-                    className="w-4 h-3 text-[#191244]"
-                    fill={theme.textColor}
+                    rimColor={theme.accentPink}
+                    outlineColor={theme.primaryBorder}
                   />
                 </button>
 
                 {/* 5-Segment Pixel Volume Block Bar */}
                 <div
-                  className="flex items-center gap-[3px] p-[2.5px] rounded-[2px] border shadow-[1px_1px_0px_#191244]"
+                  className="flex items-center gap-[3px] p-[2.5px] rounded-[3px] border-2 shadow-[1px_1px_0px_#191244]"
                   style={{
                     backgroundColor: '#fffdf5',
                     borderColor: theme.primaryBorder,
@@ -1016,26 +1004,50 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                 </span>
 
                 <div className="ml-auto flex items-center gap-1.5">
-                  {/* Shuffle */}
+                  {/* Pixel Shuffle Button */}
                   <button
+                    type="button"
                     onClick={handleToggleShuffle}
                     title={`Shuffle: ${shuffleState ? 'ON' : 'OFF'}`}
-                    className={`p-1 border border-[#191244] text-[9px] cursor-pointer ${
-                      shuffleState ? 'bg-[#ffd269]' : 'bg-[#fffdf5] opacity-60'
-                    }`}
+                    className="w-[22px] h-[20px] rounded-[2px] border-2 flex items-center justify-center cursor-pointer transition-all active:translate-y-0.5 outline-none focus:outline-none"
+                    style={{
+                      backgroundColor: shuffleState ? (theme.accentPink || '#ffd269') : '#fffdf5',
+                      borderColor: theme.primaryBorder,
+                      boxShadow: shuffleState
+                        ? `inset 0 1px 0 rgba(255,255,255,0.7), 1px 1px 0px ${theme.primaryBorder}`
+                        : `1px 1px 0px ${theme.primaryBorder}`,
+                    }}
                   >
-                    🔀
+                    <PixelShuffleIcon
+                      active={shuffleState}
+                      color={shuffleState ? theme.primaryBorder : `${theme.primaryBorder}77`}
+                    />
                   </button>
 
-                  {/* Repeat */}
+                  {/* Pixel Repeat Button */}
                   <button
+                    type="button"
                     onClick={handleCycleRepeat}
-                    title={`Repeat: ${repeatState}`}
-                    className={`p-1 border border-[#191244] text-[9px] cursor-pointer ${
-                      repeatState !== 'off' ? 'bg-[#9df0cf]' : 'bg-[#fffdf5] opacity-60'
-                    }`}
+                    title={`Repeat: ${repeatState.toUpperCase()}`}
+                    className="w-[22px] h-[20px] rounded-[2px] border-2 flex items-center justify-center cursor-pointer transition-all active:translate-y-0.5 outline-none focus:outline-none"
+                    style={{
+                      backgroundColor:
+                        repeatState === 'track'
+                          ? theme.accentPink
+                          : repeatState === 'context'
+                          ? '#9df0cf'
+                          : '#fffdf5',
+                      borderColor: theme.primaryBorder,
+                      boxShadow:
+                        repeatState !== 'off'
+                          ? `inset 0 1px 0 rgba(255,255,255,0.7), 1px 1px 0px ${theme.primaryBorder}`
+                          : `1px 1px 0px ${theme.primaryBorder}`,
+                    }}
                   >
-                    {repeatState === 'track' ? '🔂' : '🔁'}
+                    <PixelRepeatIcon
+                      mode={repeatState}
+                      color={repeatState !== 'off' ? theme.primaryBorder : `${theme.primaryBorder}77`}
+                    />
                   </button>
 
                   {/* Spotify Quick Pill */}
@@ -1044,7 +1056,12 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                       playClickSound();
                       onOpenSpotifyModal();
                     }}
-                    className="font-pixel text-[8px] px-2 py-0.5 bg-[#fffdf5] border border-[#191244] hover:bg-[#9df0cf] transition-colors cursor-pointer whitespace-nowrap"
+                    className="font-pixel text-[8px] px-2 h-[20px] bg-[#fffdf5] border-2 rounded-[2px] hover:bg-[#9df0cf] transition-all cursor-pointer whitespace-nowrap active:translate-y-0.5 flex items-center"
+                    style={{
+                      borderColor: theme.primaryBorder,
+                      boxShadow: `1px 1px 0px ${theme.primaryBorder}`,
+                      color: theme.textColor,
+                    }}
                   >
                     {isSpotifyConnected ? 'SPOTIFY' : '+ SPOTIFY'}
                   </button>
