@@ -34,6 +34,7 @@ import {
 
 export * from './spotifyAuth';
 export * from './spotifyApi';
+export * from './spotifyAutoLaunch';
 
 // Username in-memory cache
 let cachedUserName: string = 'RABGON';

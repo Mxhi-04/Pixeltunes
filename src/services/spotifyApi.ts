@@ -11,6 +11,11 @@
 
 import { getAccessToken, refresh } from './spotifyAuth';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
+import {
+  getAutoLaunchPermission,
+  launchSpotifyInBackground,
+  requestAutoLaunchPrompt,
+} from './spotifyAutoLaunch';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
@@ -173,18 +178,64 @@ export async function getPlaybackState(): Promise<SpotifyPlaybackState | null> {
 }
 
 /**
+ * Helper to ensure Spotify desktop client is running and available as a playback target.
+ * If 0 devices are reported and auto-launch is enabled, it automatically wakes Spotify in the background,
+ * waits for the device to connect, and transfers playback.
+ */
+export async function ensureActivePlaybackDevice(): Promise<SpotifyDevice | null> {
+  let devices = await getDevices();
+  const activeOrComputer =
+    devices.find((d) => d.is_active) ||
+    devices.find((d) => d.type?.toLowerCase() === 'computer') ||
+    devices[0];
+
+  if (activeOrComputer) {
+    return activeOrComputer;
+  }
+
+  // No devices found. Check auto-launch permission
+  const perm = getAutoLaunchPermission();
+  if (perm === 'prompt') {
+    // Notify UI to ask the user permission!
+    requestAutoLaunchPrompt();
+    return null;
+  }
+
+  if (perm === 'allowed') {
+    console.log('[Spotify Auto-Launch] Launching Spotify in background minimized...');
+    await launchSpotifyInBackground();
+    // Poll for device for up to 8 seconds (every 450ms)
+    for (let i = 0; i < 16; i++) {
+      await new Promise((r) => setTimeout(r, 450));
+      devices = await getDevices();
+      const newTarget =
+        devices.find((d) => d.type?.toLowerCase() === 'computer') ||
+        devices.find((d) => d.is_active) ||
+        devices[0];
+
+      if (newTarget) {
+        console.log('[Spotify Auto-Launch] Spotify device ready:', newTarget.name);
+        await transferPlayback(newTarget.id, false).catch(() => {});
+        return newTarget;
+      }
+    }
+  }
+
+  return null;
+}
+
+/**
  * Play / Resume with Seamless Auto-Wake and Fallback
  */
 export async function play(deviceId?: string): Promise<boolean> {
   try {
     let devices = await getDevices();
 
-    // If devices list is empty, poll briefly for registered device
+    // If devices list is empty, ensure active playback device
     if (devices.length === 0) {
-      for (let attempt = 0; attempt < 3; attempt++) {
-        await new Promise((r) => setTimeout(r, 300));
-        devices = await getDevices();
-        if (devices.length > 0) break;
+      const readyDevice = await ensureActivePlaybackDevice();
+      if (readyDevice) {
+        devices = [readyDevice];
       }
     }
 
@@ -457,8 +508,10 @@ export async function playTrack(
     // 1. Resolve active or computer device
     let devices = await getDevices();
     if (devices.length === 0) {
-      await new Promise((r) => setTimeout(r, 200));
-      devices = await getDevices();
+      const readyDevice = await ensureActivePlaybackDevice();
+      if (readyDevice) {
+        devices = [readyDevice];
+      }
     }
 
     const active = devices.find((d) => d.is_active);
@@ -529,7 +582,13 @@ export async function playPlaylist(contextUri: string, deviceId?: string): Promi
   try {
     let targetId = deviceId;
     if (!targetId) {
-      const devices = await getDevices();
+      let devices = await getDevices();
+      if (devices.length === 0) {
+        const readyDevice = await ensureActivePlaybackDevice();
+        if (readyDevice) {
+          devices = [readyDevice];
+        }
+      }
       const active = devices.find((d) => d.is_active);
       targetId = active?.id || (devices.length > 0 ? devices[0].id : undefined);
     }

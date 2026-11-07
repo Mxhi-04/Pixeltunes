@@ -111,6 +111,55 @@ async function performPkceTokenRefresh() {
   }
 }
 
+/**
+ * Launch Spotify Desktop App in background and automatically minimize/hide it.
+ * macOS: Launches hidden and minimizes/hides via AppleScript
+ * Windows: Launches minimized via start /min
+ * Linux: Launches with --minimized flag
+ */
+function launchSpotifyInBackground(callback) {
+  const { exec } = require('child_process');
+  if (process.platform === 'darwin') {
+    const appleScript = `
+      try
+        tell application "System Events"
+          set isRunning to (name of processes) contains "Spotify"
+        end tell
+        if isRunning then
+          tell application "System Events" to set visible of process "Spotify" to false
+        else
+          do shell script "open -j -g -a Spotify"
+          delay 0.8
+          tell application "System Events"
+            if (name of processes) contains "Spotify" then
+              set visible of process "Spotify" to false
+            end if
+          end tell
+        end if
+      on error
+        do shell script "open -g -a Spotify"
+      end try
+    `;
+    exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (err) => {
+      if (callback) callback(!err);
+    });
+    return;
+  }
+  if (process.platform === 'win32') {
+    exec('start "" /min "spotify:"', (err) => {
+      if (callback) callback(!err);
+    });
+    return;
+  }
+  if (process.platform === 'linux') {
+    exec('spotify --minimized &', (err) => {
+      if (callback) callback(!err);
+    });
+    return;
+  }
+  if (callback) callback(false);
+}
+
 function startPersistentAuthServer() {
   if (persistentAuthServer) {
     try { persistentAuthServer.close(); } catch (e) {}
@@ -424,13 +473,14 @@ function startPersistentAuthServer() {
 
       // /api/eval: execute JS in mainWindow and return result
       if (parsedUrl.pathname === '/api/eval') {
-        if (mainWindow) {
+        const win = mainWindow || (BrowserWindow.getAllWindows && BrowserWindow.getAllWindows()[0]);
+        if (win) {
           let body = '';
           req.on('data', chunk => { body += chunk; });
           req.on('end', async () => {
             try {
               const parsed = JSON.parse(body || '{}');
-              const evalResult = await mainWindow.webContents.executeJavaScript(parsed.code || '');
+              const evalResult = await win.webContents.executeJavaScript(parsed.code || '');
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ result: evalResult }));
             } catch (err) {
@@ -517,18 +567,12 @@ function startPersistentAuthServer() {
         return;
       }
 
-      // 8. /api/spotify/wake: Launch or wake Spotify app on macOS in background
-      if (parsedUrl.pathname === '/api/spotify/wake') {
-        const { exec } = require('child_process');
-        if (process.platform === 'darwin') {
-          exec('open -g -a Spotify', (err) => {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: !err }));
-          });
-          return;
-        }
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
+      // 8. /api/spotify/wake & /api/spotify/launch-background: Launch Spotify app in background & minimize
+      if (parsedUrl.pathname === '/api/spotify/wake' || parsedUrl.pathname === '/api/spotify/launch-background') {
+        launchSpotifyInBackground((success) => {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success }));
+        });
         return;
       }
 
@@ -681,7 +725,15 @@ ipcMain.handle('spotify:refresh-token', async () => {
 });
 
 ipcMain.handle('spotify:wake', async () => {
-  return true;
+  return new Promise((resolve) => {
+    launchSpotifyInBackground((success) => resolve(success));
+  });
+});
+
+ipcMain.handle('spotify:launch-background', async () => {
+  return new Promise((resolve) => {
+    launchSpotifyInBackground((success) => resolve(success));
+  });
 });
 
 ipcMain.handle('spotify:open-uri', (event, uri) => {

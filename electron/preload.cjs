@@ -25,6 +25,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openBrowserLogin: (clientId) => ipcRenderer.send('spotify:open-browser-login', clientId),
   refreshSpotifyToken: (refreshToken) => ipcRenderer.invoke('spotify:refresh-token', refreshToken),
   wakeSpotify: () => ipcRenderer.invoke('spotify:wake'),
+  launchSpotifyInBackground: () => ipcRenderer.invoke('spotify:launch-background'),
   openSpotifyUri: (uri) => ipcRenderer.invoke('spotify:open-uri', uri),
   saveTempCover: (base64Data, trackKey) => ipcRenderer.invoke('cover:save-temp', { base64Data, trackKey }),
   deleteTempCover: (filePath) => ipcRenderer.invoke('cover:delete-temp', filePath),

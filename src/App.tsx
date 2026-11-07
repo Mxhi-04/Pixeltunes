@@ -4,6 +4,7 @@ import { RetroWindow } from './components/RetroWindow';
 import { SpotifyModal } from './components/SpotifyModal';
 import { SettingsModal } from './components/SettingsModal';
 import { QuickConnectModal } from './components/QuickConnectModal';
+import { AutoLaunchPermissionModal } from './components/AutoLaunchPermissionModal';
 import { THEMES, RetroTheme } from './types/theme';
 import { SCALES, PlayerScale } from './types/scale';
 import { SpotifyPlaybackState } from './types/spotify';
@@ -20,6 +21,11 @@ import {
   loadAndPauseFirstLikedSong,
   handleWebAuthCallback,
 } from './services/spotify';
+import {
+  getAutoLaunchPermission,
+  launchSpotifyInBackground,
+  onAutoLaunchPromptRequested,
+} from './services/spotifyAutoLaunch';
 import { isSoundEffectsEnabled, setSoundEffectsEnabled, playClickSound } from './services/soundEffects';
 
 const BASE_WIDTH = 720;
@@ -65,6 +71,15 @@ export const App: React.FC = () => {
   // Modals
   const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [showAutoLaunchModal, setShowAutoLaunchModal] = useState(false);
+
+  // Listen for auto-launch prompt requests (e.g. when user tries to play and Spotify is off)
+  useEffect(() => {
+    const unsub = onAutoLaunchPromptRequested(() => {
+      setShowAutoLaunchModal(true);
+    });
+    return unsub;
+  }, []);
 
   // Helper to load and pause user's first liked song on startup/connect
   const syncFirstLikedSong = useCallback(async () => {
@@ -117,6 +132,14 @@ export const App: React.FC = () => {
         setNeedsScopeUpgrade(false);
         // Pause on the very first song of user's Liked Songs playlist whenever Pixeltunes is opened!
         syncFirstLikedSong();
+
+        // Check background auto-launch permission:
+        const perm = getAutoLaunchPermission();
+        if (perm === 'prompt') {
+          setShowAutoLaunchModal(true);
+        } else if (perm === 'allowed') {
+          launchSpotifyInBackground().catch(() => {});
+        }
       } else {
         setIsSpotifyConnected(false);
         setNeedsScopeUpgrade(Boolean(upgradeRequired));
@@ -146,6 +169,14 @@ export const App: React.FC = () => {
 
         // As soon as Pixeltunes is connected, pause on the first liked song playlist of the user!
         syncFirstLikedSong();
+
+        // Check auto-launch permission on connect
+        const perm = getAutoLaunchPermission();
+        if (perm === 'prompt') {
+          setShowAutoLaunchModal(true);
+        } else if (perm === 'allowed') {
+          launchSpotifyInBackground().catch(() => {});
+        }
       });
     }
 
@@ -228,6 +259,14 @@ export const App: React.FC = () => {
     setUserName(name);
     pollSpotify();
     await syncFirstLikedSong();
+
+    // Check background auto-launch permission:
+    const perm = getAutoLaunchPermission();
+    if (perm === 'prompt') {
+      setShowAutoLaunchModal(true);
+    } else if (perm === 'allowed') {
+      launchSpotifyInBackground().catch(() => {});
+    }
   };
 
   const handleLogout = () => {
@@ -298,7 +337,7 @@ export const App: React.FC = () => {
             onPollSpotify={pollSpotify}
             onOpenSpotifyModal={() => setIsSpotifyModalOpen(true)}
             onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-            isModalOpen={isSpotifyModalOpen || isSettingsModalOpen || showQuickConnect}
+            isModalOpen={isSpotifyModalOpen || isSettingsModalOpen || showQuickConnect || showAutoLaunchModal}
           />
 
           {/* 1-Click Spotify Connect Prompt on Startup */}
@@ -307,6 +346,16 @@ export const App: React.FC = () => {
             onClose={() => setShowQuickConnect(false)}
             needsScopeUpgrade={needsScopeUpgrade}
             onConnected={syncFirstLikedSong}
+          />
+
+          {/* First-Time Permission Prompt: Auto-Launch Spotify in Background */}
+          <AutoLaunchPermissionModal
+            isOpen={showAutoLaunchModal}
+            onClose={() => setShowAutoLaunchModal(false)}
+            onAccepted={() => {
+              syncFirstLikedSong();
+              pollSpotify();
+            }}
           />
 
           {/* Modals rendered directly inside the scaled 720x410 container so they never clip or distort! */}

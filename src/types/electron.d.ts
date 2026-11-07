@@ -26,6 +26,8 @@ export interface ElectronAPI {
   refreshSpotifyToken?: (refreshToken: string) => Promise<{ access_token: string; refresh_token?: string; expires_in?: number } | null>;
   saveTempCover?: (base64Data: string, trackKey: string) => Promise<string | null>;
   deleteTempCover?: (filePath: string) => Promise<boolean>;
+  wakeSpotify?: () => Promise<boolean>;
+  launchSpotifyInBackground?: () => Promise<boolean>;
 }
 
 declare global {

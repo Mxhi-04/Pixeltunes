@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { THEMES, RetroTheme } from '../types/theme';
 import { SCALES, PlayerScale } from '../types/scale';
 import { playClickSound, setSoundEffectsEnabled } from '../services/soundEffects';
+import {
+  isAutoLaunchEnabled,
+  setAutoLaunchPermission,
+  launchSpotifyInBackground,
+} from '../services/spotifyAutoLaunch';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -48,6 +53,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   pixelResolution = 180,
   onPixelResolutionChange,
 }) => {
+  const [autoLaunchEnabled, setAutoLaunchEnabled] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setAutoLaunchEnabled(isAutoLaunchEnabled());
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -232,6 +245,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Toggle Options */}
           <div className="space-y-2 pt-1">
+            {/* Auto-Launch Spotify in Background */}
+            <div className="bg-[#fffdf5] p-2 border-2 border-[#191244]">
+              <div className="flex items-center justify-between mb-1.5">
+                <span className="font-pixel text-[10px] font-bold">AUTO-LAUNCH SPOTIFY APP:</span>
+                <span className={`font-pixel text-[8px] font-bold ${autoLaunchEnabled ? 'text-[#0d8253]' : 'text-[#888]'}`}>
+                  {autoLaunchEnabled ? '[AUTO-MINIMIZED]' : '[OFF]'}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setAutoLaunchPermission('allowed');
+                    setAutoLaunchEnabled(true);
+                    launchSpotifyInBackground().catch(() => {});
+                  }}
+                  className={`p-1.5 text-[9px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
+                    autoLaunchEnabled
+                      ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                  }`}
+                >
+                  ✓ ENABLED
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    setAutoLaunchPermission('denied');
+                    setAutoLaunchEnabled(false);
+                  }}
+                  className={`p-1.5 text-[9px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
+                    !autoLaunchEnabled
+                      ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                  }`}
+                >
+                  ✕ DISABLED
+                </button>
+              </div>
+              <p className="font-pixel text-[7.5px] text-[#191244]/70 mt-1">
+                Opens Spotify in background &amp; minimizes it to prevent playback errors
+              </p>
+            </div>
+
             <label className="flex items-center justify-between bg-[#fffdf5] p-2 border-2 border-[#191244] cursor-pointer">
               <span className="font-pixel text-[10px]">8-BIT AUDIO FX:</span>
               <input
