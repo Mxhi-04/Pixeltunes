@@ -356,6 +356,44 @@ function startPersistentAuthServer() {
         }
       }
 
+      // /api/open-settings: open settings modal
+      if (parsedUrl.pathname === '/api/open-settings') {
+        if (mainWindow) {
+          await mainWindow.webContents.executeJavaScript(`
+            const menuBtn = document.querySelector('button[title="Settings"]') ||
+                            document.querySelector('button[title="Menu"]') ||
+                            Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('MENU'));
+            if (menuBtn) menuBtn.click();
+          `);
+          res.writeHead(200);
+          res.end('opened');
+          return;
+        }
+      }
+
+      // /api/open-spotify: open spotify setup modal
+      if (parsedUrl.pathname === '/api/open-spotify') {
+        if (mainWindow) {
+          try {
+            await mainWindow.webContents.executeJavaScript(`
+              (() => {
+                const btn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').includes('SPOTIFY'));
+                if (btn) {
+                  btn.click();
+                  return 'clicked';
+                }
+                return 'not found';
+              })()
+            `);
+            res.writeHead(200);
+            res.end('opened');
+            return;
+          } catch (e) {
+            console.error('[Open Spotify Error]', e);
+          }
+        }
+      }
+
       // 9. /api/click-play: click the main play/pause button
       if (parsedUrl.pathname === '/api/click-play') {
         if (mainWindow) {

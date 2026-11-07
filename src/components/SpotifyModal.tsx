@@ -171,27 +171,55 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-xs select-none">
-      <div className="w-[640px] max-w-[95%] max-h-[385px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden">
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/80 backdrop-blur-xs select-none app-no-drag"
+      style={{ WebkitAppRegion: 'no-drag' as any }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          handleGoBack();
+        }
+      }}
+    >
+      <div
+        className="w-[640px] max-w-[95%] max-h-[385px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden app-no-drag"
+        style={{ WebkitAppRegion: 'no-drag' as any }}
+      >
         {/* Fixed Header Bar */}
-        <div className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-1.5">
+        <div
+          className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0 app-no-drag"
+          style={{ WebkitAppRegion: 'no-drag' as any }}
+        >
+          <div className="flex items-center gap-1.5 app-no-drag">
             <span className="font-pixel text-xs text-[#191244] tracking-wider font-bold">
               SPOTIFY.SETUP
             </span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 app-no-drag">
             <button
-              onClick={handleGoBack}
-              className="px-2 py-0.5 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] font-pixel text-[9px] hover:bg-[#ffe6f0] active:translate-y-0.5 cursor-pointer font-bold"
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleGoBack();
+              }}
+              className="px-2 py-0.5 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] font-pixel text-[9px] hover:bg-[#ffe6f0] active:translate-y-0.5 cursor-pointer font-bold app-no-drag"
+              style={{ WebkitAppRegion: 'no-drag' as any }}
             >
               ← BACK TO PLAYER
             </button>
             <button
-              onClick={handleGoBack}
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleGoBack();
+              }}
               title="Close"
-              className="w-5 h-5 flex items-center justify-center bg-[#fec5db] border-2 border-[#191244] text-xs font-bold hover:bg-[#ff7b90] cursor-pointer"
+              className="w-6 h-6 flex items-center justify-center bg-[#fec5db] border-2 border-[#191244] text-xs font-bold hover:bg-[#ff7b90] active:translate-y-0.5 transition-colors cursor-pointer app-no-drag"
+              style={{ WebkitAppRegion: 'no-drag' as any }}
             >
               ✕
             </button>
@@ -199,7 +227,10 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-3.5 overflow-y-auto min-h-0 flex-1 space-y-3 text-[#191244] font-silkscreen text-xs">
+        <div
+          className="p-3.5 overflow-y-auto min-h-0 flex-1 space-y-3 text-[#191244] font-silkscreen text-xs app-no-drag"
+          style={{ WebkitAppRegion: 'no-drag' as any }}
+        >
           {isLoggedIn ? (
             /* Connected view */
             <div className="space-y-2.5">

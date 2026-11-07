@@ -64,8 +64,9 @@ button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cu
   -webkit-app-region: drag;
 }
 
-.app-no-drag {
-  -webkit-app-region: no-drag;
+.app-no-drag,
+.app-no-drag * {
+  -webkit-app-region: no-drag !important;
 }
 
 /* Retro CRT Scanlines Effect */

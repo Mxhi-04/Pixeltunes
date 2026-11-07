@@ -298,6 +298,7 @@ export const App: React.FC = () => {
             onPollSpotify={pollSpotify}
             onOpenSpotifyModal={() => setIsSpotifyModalOpen(true)}
             onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
+            isModalOpen={isSpotifyModalOpen || isSettingsModalOpen || showQuickConnect}
           />
 
           {/* 1-Click Spotify Connect Prompt on Startup */}

@@ -47,6 +47,7 @@ interface RetroWindowProps {
   onOpenSpotifyModal: () => void;
   onOpenSettingsModal: () => void;
   onOpenPlaylistModal?: () => void;
+  isModalOpen?: boolean;
 }
 
 function getFormattedDigitalTime(): { time: string; period: string } {
@@ -79,6 +80,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   onOpenSpotifyModal,
   onOpenSettingsModal,
   onOpenPlaylistModal,
+  isModalOpen = false,
 }) => {
   const windowRef = useRef<HTMLDivElement | null>(null);
 
@@ -153,7 +155,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   const cycleScale = () => {
     playClickSound();
-    const scalesList: PlayerScale[] = ['standard', 'large', 'xlarge', 'mini'];
+    const scalesList: PlayerScale[] = ['standard', 'large', 'mini'];
     const currentIndex = scalesList.indexOf(scale);
     const nextScale = scalesList[(currentIndex + 1) % scalesList.length];
     onScaleChange(nextScale);
@@ -577,12 +579,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     >
       {/* Window Title Bar */}
       <div
-        className="h-10 px-3 py-2 flex items-center justify-between border-b-4 border-solid app-drag select-none shrink-0"
+        className={`h-10 px-3 py-2 flex items-center justify-between border-b-4 border-solid ${
+          isModalOpen ? 'app-no-drag' : 'app-drag'
+        } select-none shrink-0`}
         style={{
           backgroundColor: theme.titleBarBg,
           borderColor: theme.primaryBorder,
           color: theme.textColor,
-        }}
+          WebkitAppRegion: isModalOpen ? 'no-drag' : 'drag',
+        } as any}
       >
         {/* Candy Buttons & Window Title */}
         <div className="flex items-center gap-2 app-no-drag">

@@ -66,16 +66,29 @@ export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
   };
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center bg-[#191244]/80 backdrop-blur-[2px] p-4 select-none animate-fadeIn">
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center bg-[#191244]/80 backdrop-blur-[2px] p-4 select-none animate-fadeIn app-no-drag"
+      style={{ WebkitAppRegion: 'no-drag' as any }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          playClickSound();
+          onClose();
+        }
+      }}
+    >
       <div
-        className="relative w-[360px] max-w-[94%] bg-[#fffdf5] border-4 border-[#191244] shadow-pixel-lg flex flex-col overflow-hidden"
+        className="relative w-[360px] max-w-[94%] bg-[#fffdf5] border-4 border-[#191244] shadow-pixel-lg flex flex-col overflow-hidden app-no-drag"
         style={{
           boxShadow: '6px 6px 0px 0px #191244',
+          WebkitAppRegion: 'no-drag' as any,
         }}
       >
         {/* Retro Title Bar */}
-        <div className="h-8 bg-[#fec5db] border-b-4 border-[#191244] px-3 flex items-center justify-between select-none shrink-0">
-          <div className="flex items-center gap-1.5 min-w-0">
+        <div
+          className="h-8 bg-[#fec5db] border-b-4 border-[#191244] px-3 flex items-center justify-between select-none shrink-0 app-no-drag"
+          style={{ WebkitAppRegion: 'no-drag' as any }}
+        >
+          <div className="flex items-center gap-1.5 min-w-0 app-no-drag">
             <span className="text-[12px] text-[#ff7b90] animate-bounce">♫</span>
             <span className="font-pixel text-[8.5px] font-bold tracking-widest text-[#191244] truncate">
               {needsScopeUpgrade ? 'SPOTIFY PERMISSION UPDATE' : 'SPOTIFY 1-CLICK CONNECT'}
@@ -83,12 +96,17 @@ export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
           </div>
 
           <button
-            onClick={() => {
+            type="button"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
               playClickSound();
               onClose();
             }}
             title="Close"
-            className="w-4 h-4 rounded-full border-2 border-[#191244] bg-[#ff7b90] text-[#191244] text-[8px] font-bold flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer leading-none"
+            className="w-5 h-5 rounded-full border-2 border-[#191244] bg-[#ff7b90] text-[#191244] text-[9px] font-bold flex items-center justify-center hover:scale-110 active:scale-95 transition-transform cursor-pointer leading-none app-no-drag"
+            style={{ WebkitAppRegion: 'no-drag' as any }}
           >
             ✕
           </button>

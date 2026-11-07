@@ -1,3 +1,11 @@
+import 'react';
+
+declare module 'react' {
+  interface CSSProperties {
+    WebkitAppRegion?: 'drag' | 'no-drag' | string;
+  }
+}
+
 export interface ElectronAPI {
   isElectron: boolean;
   minimize: () => void;

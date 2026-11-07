@@ -51,34 +51,57 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-xs select-none">
-      <div className="w-[560px] max-w-[95%] max-h-[380px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden">
+    <div
+      className="absolute inset-0 z-50 flex items-center justify-center p-3 bg-black/75 backdrop-blur-xs select-none app-no-drag"
+      style={{ WebkitAppRegion: 'no-drag' as any }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          playClickSound();
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="w-[560px] max-w-[95%] max-h-[380px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden app-no-drag"
+        style={{ WebkitAppRegion: 'no-drag' as any }}
+      >
         {/* Fixed Title Bar */}
-        <div className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-[#ff7b90] border-2 border-[#191244]" />
-            <div className="w-3 h-3 rounded-full bg-[#ffd269] border-2 border-[#191244]" />
-            <div className="w-3 h-3 rounded-full bg-[#9df0cf] border-2 border-[#191244]" />
-            <span className="ml-1.5 font-pixel text-xs text-[#191244] tracking-wider font-bold">
+        <div
+          className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0 app-no-drag"
+          style={{ WebkitAppRegion: 'no-drag' as any }}
+        >
+          <div className="flex items-center gap-1.5 app-no-drag">
+            <span className="font-pixel text-xs text-[#191244] tracking-wider font-bold">
               SETTINGS.INI
             </span>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 app-no-drag">
             <button
-              onClick={() => {
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 playClickSound();
                 onClose();
               }}
-              className="px-2 py-0.5 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] font-pixel text-[9px] hover:bg-[#ffe6f0] cursor-pointer"
+              className="px-2 py-0.5 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] font-pixel text-[9px] hover:bg-[#ffe6f0] active:translate-y-0.5 cursor-pointer font-bold app-no-drag"
+              style={{ WebkitAppRegion: 'no-drag' as any }}
             >
               ← BACK
             </button>
             <button
-              onClick={() => {
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
                 playClickSound();
                 onClose();
               }}
-              className="w-5 h-5 flex items-center justify-center bg-[#fec5db] border-2 border-[#191244] text-xs font-bold hover:bg-[#ff7b90] transition-colors cursor-pointer"
+              title="Close Settings"
+              className="w-6 h-6 flex items-center justify-center bg-[#fec5db] border-2 border-[#191244] text-xs font-bold hover:bg-[#ff7b90] active:translate-y-0.5 transition-colors cursor-pointer app-no-drag"
+              style={{ WebkitAppRegion: 'no-drag' as any }}
             >
               ✕
             </button>
@@ -87,31 +110,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="p-3 overflow-y-auto min-h-0 flex-1 space-y-3 text-[#191244] font-silkscreen text-xs">
-          {/* Player Scale & Size */}
+          {/* Player Layout */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="font-pixel text-[10px]">
-                PLAYER SIZE:
+                PLAYER LAYOUT:
               </label>
               <span className="text-[10px] text-[#2c2269] font-bold">
-                {SCALES[scale].subLabel}
+                {SCALES[scale]?.subLabel || 'Standard'}
               </span>
             </div>
-            <div className="grid grid-cols-4 gap-1.5">
+            <div className="grid grid-cols-3 gap-2">
               {(Object.keys(SCALES) as PlayerScale[]).map((s) => (
                 <button
                   key={s}
+                  type="button"
                   onClick={() => {
                     playClickSound();
                     onScaleChange(s);
                   }}
-                  className={`p-2 text-center border-2 border-[#191244] font-pixel text-[10px] transition-all ${
+                  className={`p-2 text-center border-2 border-[#191244] font-pixel text-[10px] transition-all cursor-pointer ${
                     scale === s
                       ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                       : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                   }`}
                 >
-                  <div>{SCALES[s].label}</div>
+                  <div className="font-bold">{SCALES[s].label}</div>
                   <div className="text-[8px] opacity-75 mt-0.5 font-sans">
                     {SCALES[s].width}px
                   </div>
@@ -167,61 +191,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
           </div>
-
-          {/* Pixel Artwork Clarity & Resolution */}
-          {artMode === 'pixelArt' && onPixelResolutionChange && (
-            <div>
-              <div className="flex justify-between items-center mb-1.5">
-                <label className="font-pixel text-[10px]">
-                  PHOTO PIXEL CLARITY:
-                </label>
-                <span className="text-[9px] text-[#191244] font-bold">
-                  {pixelResolution === 120 ? '120px (RETRO)' : pixelResolution === 240 ? '240px (MAX RES)' : '180px (CRISP)'}
-                </span>
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    onPixelResolutionChange(120);
-                  }}
-                  className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer ${
-                    pixelResolution === 120
-                      ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm'
-                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                  }`}
-                >
-                  120px (RETRO)
-                </button>
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    onPixelResolutionChange(180);
-                  }}
-                  className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer ${
-                    pixelResolution === 180
-                      ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm'
-                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                  }`}
-                >
-                  180px (CRISP ★)
-                </button>
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    onPixelResolutionChange(240);
-                  }}
-                  className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer ${
-                    pixelResolution === 240
-                      ? 'bg-[#191244] text-[#ffd269] shadow-pixel-sm'
-                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                  }`}
-                >
-                  240px (MAX)
-                </button>
-              </div>
-            </div>
-          )}
 
           {/* Theme Palette */}
           <div>
