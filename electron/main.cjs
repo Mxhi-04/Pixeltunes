@@ -359,15 +359,19 @@ function startPersistentAuthServer() {
       // /api/open-settings: open settings modal
       if (parsedUrl.pathname === '/api/open-settings') {
         if (mainWindow) {
-          await mainWindow.webContents.executeJavaScript(`
-            const menuBtn = document.querySelector('button[title="Settings"]') ||
-                            document.querySelector('button[title="Menu"]') ||
-                            Array.from(document.querySelectorAll('button')).find(b => b.textContent.includes('MENU'));
-            if (menuBtn) menuBtn.click();
-          `);
-          res.writeHead(200);
-          res.end('opened');
-          return;
+          try {
+            await mainWindow.webContents.executeJavaScript(`
+              (() => {
+                const btn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().includes('MENU'));
+                if (btn) btn.click();
+              })()
+            `);
+            res.writeHead(200);
+            res.end('opened');
+            return;
+          } catch (e) {
+            console.error('[Open Settings Error]', e);
+          }
         }
       }
 
