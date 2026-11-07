@@ -8,8 +8,8 @@ interface SettingsModalProps {
   onClose: () => void;
   currentTheme: RetroTheme;
   onThemeSelect: (theme: RetroTheme) => void;
-  artMode: 'inspo' | 'pixelArt' | 'cassette';
-  onArtModeSelect: (mode: 'inspo' | 'pixelArt' | 'cassette') => void;
+  artMode: 'pixelCovers' | 'pixelArt' | 'cassette' | 'inspo' | 'saturn';
+  onArtModeSelect: (mode: 'pixelCovers' | 'pixelArt' | 'cassette') => void;
   crtEnabled: boolean;
   onToggleCrt: () => void;
   soundEnabled: boolean;
@@ -154,38 +154,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 type="button"
                 onClick={() => {
                   playClickSound();
-                  onArtModeSelect('inspo');
+                  onArtModeSelect('pixelCovers');
                 }}
                 className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
-                  artMode === 'inspo'
+                  artMode === 'pixelCovers' || artMode === 'inspo' || artMode === 'saturn'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                ✨ PIXEL ART
+                ✨ PIXEL COVERS
               </button>
               <button
+                type="button"
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('pixelArt');
                 }}
-                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all ${
+                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
                   artMode === 'pixelArt'
-                    ? 'bg-[#191244] text-[#fec5db] shadow-pixel-sm'
-                    : 'bg-[#fffdf5] text-[#191244]'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
                 🎨 SPOTIFY ART
               </button>
               <button
+                type="button"
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('cassette');
                 }}
-                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all ${
+                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
                   artMode === 'cassette'
-                    ? 'bg-[#191244] text-[#fec5db] shadow-pixel-sm'
-                    : 'bg-[#fffdf5] text-[#191244]'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
                 📼 CASSETTE

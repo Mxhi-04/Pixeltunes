@@ -31,7 +31,7 @@ const DEFAULT_WINDOW_TITLE = 'PIXELTUNES';
 export const App: React.FC = () => {
   // Theme & Aesthetic State
   const [currentTheme, setCurrentTheme] = useState<RetroTheme>(THEMES.inspo);
-  const [artMode, setArtMode] = useState<'inspo' | 'pixelArt' | 'cassette'>('inspo');
+  const [artMode, setArtMode] = useState<'pixelCovers' | 'pixelArt' | 'cassette'>('pixelCovers');
   const [pixelResolution, setPixelResolution] = useState<number>(180);
   const [scale, setScale] = useState<PlayerScale>('standard');
   const [crtEnabled, setCrtEnabled] = useState(true);
@@ -214,9 +214,9 @@ export const App: React.FC = () => {
   // Cycle Art Mode Helper
   const handleCycleArtMode = () => {
     setArtMode((prev) => {
-      if (prev === 'inspo') return 'pixelArt';
+      if (prev === 'pixelCovers' || (prev as any) === 'inspo' || (prev as any) === 'saturn') return 'pixelArt';
       if (prev === 'pixelArt') return 'cassette';
-      return 'inspo';
+      return 'pixelCovers';
     });
   };
 

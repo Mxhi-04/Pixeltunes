@@ -31,7 +31,7 @@ import {
 
 interface RetroWindowProps {
   theme: RetroTheme;
-  artMode: 'inspo' | 'pixelArt' | 'cassette';
+  artMode: 'pixelCovers' | 'pixelArt' | 'cassette' | 'saturn' | 'inspo';
   onCycleArtMode: () => void;
   pixelResolution?: number;
   windowTitle: string;

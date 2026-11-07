@@ -398,18 +398,47 @@ function startPersistentAuthServer() {
       if (parsedUrl.pathname === '/api/open-settings') {
         if (mainWindow) {
           try {
-            await mainWindow.webContents.executeJavaScript(`
+            const result = await mainWindow.webContents.executeJavaScript(`
               (() => {
-                const btn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().includes('MENU'));
-                if (btn) btn.click();
+                const btn = document.querySelector('button[title="Menu / Settings"]') ||
+                            Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().includes('MENU'));
+                if (btn) {
+                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+                  btn.click();
+                  return 'clicked';
+                }
+                return 'not found';
               })()
             `);
             res.writeHead(200);
-            res.end('opened');
+            res.end(result || 'opened');
             return;
           } catch (e) {
             console.error('[Open Settings Error]', e);
+            res.writeHead(500);
+            res.end(String(e));
+            return;
           }
+        }
+      }
+
+      // /api/eval: execute JS in mainWindow and return result
+      if (parsedUrl.pathname === '/api/eval') {
+        if (mainWindow) {
+          let body = '';
+          req.on('data', chunk => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              const evalResult = await mainWindow.webContents.executeJavaScript(parsed.code || '');
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ result: evalResult }));
+            } catch (err) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: String(err) }));
+            }
+          });
+          return;
         }
       }
 

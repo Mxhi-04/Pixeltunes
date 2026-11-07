@@ -4,7 +4,7 @@ import { getPixelCoverForTrack, PixelCover } from '../types/covers';
 interface PixelCanvasProps {
   isPlaying: boolean;
   albumArtUrl?: string | null;
-  mode: 'inspo' | 'pixelArt' | 'cassette';
+  mode: 'pixelCovers' | 'pixelArt' | 'cassette' | 'saturn' | 'inspo';
   pixelResolution?: number;
   trackTitle?: string;
   artistName?: string;
@@ -84,10 +84,32 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   // Preloaded Saturn image ref for the new animated Saturn Galaxy cover
   const saturnImgRef = useRef<HTMLImageElement | null>(null);
 
-  // Pick the active Pixel Cover for this track (automatically rotates with each song)
-  const activePixelCover: PixelCover = useMemo(() => {
-    return getPixelCoverForTrack(trackTitle, artistName);
+  // Pixel Covers Mode active check
+  const isPixelCoversMode = mode === 'pixelCovers' || mode === 'inspo' || mode === 'saturn';
+
+  // Manual shuffle offset (allows user to click the cover to cycle through saved covers)
+  const [manualShuffleOffset, setManualShuffleOffset] = useState<number>(0);
+  const prevTrackKeyRef = useRef<string>('');
+
+  // Whenever trackTitle or artistName changes (every song change), reset manual shuffle offset
+  useEffect(() => {
+    const key = `${trackTitle || ''}__${artistName || ''}`;
+    if (key !== prevTrackKeyRef.current) {
+      prevTrackKeyRef.current = key;
+      setManualShuffleOffset(0);
+    }
   }, [trackTitle, artistName]);
+
+  // Pick active Pixel Cover for this track (automatically rotates/shuffles with every song change!)
+  const activePixelCover: PixelCover = useMemo(() => {
+    return getPixelCoverForTrack(trackTitle, artistName, manualShuffleOffset);
+  }, [trackTitle, artistName, manualShuffleOffset]);
+
+  const handleShuffleCover = () => {
+    if (isPixelCoversMode) {
+      setManualShuffleOffset((prev) => prev + 1);
+    }
+  };
 
   // Preload the Saturn base cover image
   useEffect(() => {
@@ -234,19 +256,25 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         return;
       }
 
-      // 3. PIXEL ART MODE ('inspo') with automatic cover rotation!
-      if (activePixelCover.type === 'canvas_saturn') {
-        // User requested: New Saturn Galaxy cover with animated twinkling stars!
-        drawSaturnScene(ctx, w, h, frame, saturnImgRef.current);
-        return;
+      // 3. PIXEL COVERS MODE (Shuffles with every song change!)
+      if (isPixelCoversMode) {
+        if (activePixelCover.type === 'canvas_saturn') {
+          drawSaturnScene(ctx, w, h, frame, saturnImgRef.current);
+          return;
+        }
+
+        if (activePixelCover.type === 'canvas_bunny') {
+          drawMoonBunnyScene(ctx, w, h, frame, isPlaying, themeColors);
+          return;
+        }
+
+        if (activePixelCover.type === 'canvas_synthwave') {
+          drawSynthwaveScene(ctx, w, h, frame, isPlaying, (trackTitle || '') + (artistName || ''));
+          return;
+        }
       }
 
-      if (activePixelCover.type === 'canvas_synthwave') {
-        drawSynthwaveScene(ctx, w, h, frame, isPlaying, trackTitle + artistName);
-        return;
-      }
-
-      // Default canvas cover: Moon Bunny scene
+      // Fallback: draw Moon Bunny scene
       drawMoonBunnyScene(ctx, w, h, frame, isPlaying, themeColors);
     };
 
@@ -262,12 +290,16 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [isPlaying, mode, activePixelCover, hasCoverLoaded, themeColors, trackTitle, artistName]);
+  }, [isPlaying, mode, isPixelCoversMode, activePixelCover, hasCoverLoaded, themeColors, trackTitle, artistName]);
 
-  // If in Pixel Art mode and current track assigned a retro GIF: render directly with native pixelated GIF animation
-  if (mode === 'inspo' && activePixelCover.type === 'gif' && activePixelCover.src) {
+  // If in Pixel Covers mode and current shuffled cover is a retro animated GIF:
+  if (isPixelCoversMode && activePixelCover.type === 'gif' && activePixelCover.src) {
     return (
-      <div className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none">
+      <div
+        className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none cursor-pointer"
+        onClick={handleShuffleCover}
+        title={`Pixel Cover: ${activePixelCover.name} (Click to shuffle)`}
+      >
         <img
           src={activePixelCover.src}
           alt={activePixelCover.name}
@@ -279,12 +311,19 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   }
 
   return (
-    <div className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none">
+    <div
+      className={`relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none ${
+        isPixelCoversMode ? 'cursor-pointer' : ''
+      }`}
+      onClick={handleShuffleCover}
+      title={isPixelCoversMode ? `Pixel Cover: ${activePixelCover.name} (Click to shuffle)` : undefined}
+    >
       <canvas
         ref={canvasRef}
         width={240}
         height={240}
-        className="w-full h-full object-contain pixelated"
+        className="w-full h-full object-contain pixelated select-none pointer-events-none"
+        style={{ imageRendering: 'pixelated' }}
       />
     </div>
   );
