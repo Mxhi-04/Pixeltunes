@@ -12,9 +12,8 @@
 import { getAccessToken, refresh } from './spotifyAuth';
 import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
 import {
-  getAutoLaunchPermission,
+  isAutoLaunchEnabled,
   launchSpotifyInBackground,
-  requestAutoLaunchPrompt,
 } from './spotifyAutoLaunch';
 
 const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
@@ -193,15 +192,8 @@ export async function ensureActivePlaybackDevice(): Promise<SpotifyDevice | null
     return activeOrComputer;
   }
 
-  // No devices found. Check auto-launch permission
-  const perm = getAutoLaunchPermission();
-  if (perm === 'prompt') {
-    // Notify UI to ask the user permission!
-    requestAutoLaunchPrompt();
-    return null;
-  }
-
-  if (perm === 'allowed') {
+  // If auto-launch is enabled, launch Spotify in background minimized and await device
+  if (isAutoLaunchEnabled()) {
     console.log('[Spotify Auto-Launch] Launching Spotify in background minimized...');
     await launchSpotifyInBackground();
     // Poll for device for up to 8 seconds (every 450ms)

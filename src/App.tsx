@@ -22,9 +22,9 @@ import {
   handleWebAuthCallback,
 } from './services/spotify';
 import {
-  getAutoLaunchPermission,
+  hasPromptedAutoLaunch,
+  isAutoLaunchEnabled,
   launchSpotifyInBackground,
-  onAutoLaunchPromptRequested,
 } from './services/spotifyAutoLaunch';
 import { isSoundEffectsEnabled, setSoundEffectsEnabled, playClickSound } from './services/soundEffects';
 
@@ -73,12 +73,11 @@ export const App: React.FC = () => {
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [showAutoLaunchModal, setShowAutoLaunchModal] = useState(false);
 
-  // Listen for auto-launch prompt requests (e.g. when user tries to play and Spotify is off)
+  // Show auto-launch permission prompt ONLY when opening PixelTunes for the VERY FIRST TIME
   useEffect(() => {
-    const unsub = onAutoLaunchPromptRequested(() => {
+    if (!hasPromptedAutoLaunch()) {
       setShowAutoLaunchModal(true);
-    });
-    return unsub;
+    }
   }, []);
 
   // Helper to load and pause user's first liked song on startup/connect
@@ -133,11 +132,8 @@ export const App: React.FC = () => {
         // Pause on the very first song of user's Liked Songs playlist whenever Pixeltunes is opened!
         syncFirstLikedSong();
 
-        // Check background auto-launch permission:
-        const perm = getAutoLaunchPermission();
-        if (perm === 'prompt') {
-          setShowAutoLaunchModal(true);
-        } else if (perm === 'allowed') {
+        // If background auto-launch enabled, keep Spotify running in background
+        if (isAutoLaunchEnabled()) {
           launchSpotifyInBackground().catch(() => {});
         }
       } else {
@@ -170,11 +166,8 @@ export const App: React.FC = () => {
         // As soon as Pixeltunes is connected, pause on the first liked song playlist of the user!
         syncFirstLikedSong();
 
-        // Check auto-launch permission on connect
-        const perm = getAutoLaunchPermission();
-        if (perm === 'prompt') {
-          setShowAutoLaunchModal(true);
-        } else if (perm === 'allowed') {
+        // If background auto-launch enabled, keep Spotify running in background
+        if (isAutoLaunchEnabled()) {
           launchSpotifyInBackground().catch(() => {});
         }
       });
@@ -260,11 +253,8 @@ export const App: React.FC = () => {
     pollSpotify();
     await syncFirstLikedSong();
 
-    // Check background auto-launch permission:
-    const perm = getAutoLaunchPermission();
-    if (perm === 'prompt') {
-      setShowAutoLaunchModal(true);
-    } else if (perm === 'allowed') {
+    // If background auto-launch enabled, keep Spotify running in background
+    if (isAutoLaunchEnabled()) {
       launchSpotifyInBackground().catch(() => {});
     }
   };

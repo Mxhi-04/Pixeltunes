@@ -6,32 +6,54 @@
  * glitches when the desktop app was previously closed.
  */
 
-const STORAGE_KEY = 'pixeltunes_auto_launch_spotify';
+const STORAGE_KEY_PERMISSION = 'pixeltunes_auto_launch_spotify';
+const STORAGE_KEY_PROMPTED = 'pixeltunes_has_prompted_auto_launch';
 
-export type AutoLaunchPermission = 'allowed' | 'denied' | 'prompt';
+export type AutoLaunchPermission = 'allowed' | 'denied';
 
 /**
- * Get current permission state:
- * - 'allowed': User granted permission to auto-launch Spotify in background
- * - 'denied': User explicitly disabled auto-launch
- * - 'prompt': First time! Needs user permission prompt
+ * Check whether the user has already been prompted for permission.
+ * Guaranteed to only prompt ONCE on the very first time opening PixelTunes!
+ */
+export function hasPromptedAutoLaunch(): boolean {
+  if (typeof window === 'undefined') return true;
+  try {
+    return localStorage.getItem(STORAGE_KEY_PROMPTED) === 'true';
+  } catch (e) {
+    return true;
+  }
+}
+
+/**
+ * Mark that the user has been prompted so they are never asked again on subsequent opens.
+ */
+export function markAutoLaunchPrompted(): void {
+  try {
+    localStorage.setItem(STORAGE_KEY_PROMPTED, 'true');
+  } catch (e) {}
+}
+
+/**
+ * Get current permission choice:
+ * - 'allowed': User enabled background auto-launch
+ * - 'denied': User disabled background auto-launch (default)
  */
 export function getAutoLaunchPermission(): AutoLaunchPermission {
   if (typeof window === 'undefined') return 'denied';
   try {
-    const val = localStorage.getItem(STORAGE_KEY);
+    const val = localStorage.getItem(STORAGE_KEY_PERMISSION);
     if (val === 'allowed') return 'allowed';
-    if (val === 'denied') return 'denied';
   } catch (e) {}
-  return 'prompt';
+  return 'denied';
 }
 
 /**
- * Set user permission choice
+ * Set user permission choice and mark prompted
  */
-export function setAutoLaunchPermission(permission: 'allowed' | 'denied'): void {
+export function setAutoLaunchPermission(permission: AutoLaunchPermission): void {
   try {
-    localStorage.setItem(STORAGE_KEY, permission);
+    localStorage.setItem(STORAGE_KEY_PERMISSION, permission);
+    localStorage.setItem(STORAGE_KEY_PROMPTED, 'true');
   } catch (e) {}
 }
 
@@ -70,23 +92,4 @@ export async function launchSpotifyInBackground(): Promise<boolean> {
   } catch (e) {}
 
   return false;
-}
-
-/**
- * Request UI to display the retro permission prompt modal
- */
-export function requestAutoLaunchPrompt(): void {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('pixeltunes:request-autolaunch-prompt'));
-  }
-}
-
-/**
- * Subscribe to permission prompt requests
- */
-export function onAutoLaunchPromptRequested(callback: () => void): () => void {
-  if (typeof window === 'undefined') return () => {};
-  const handler = () => callback();
-  window.addEventListener('pixeltunes:request-autolaunch-prompt', handler);
-  return () => window.removeEventListener('pixeltunes:request-autolaunch-prompt', handler);
 }

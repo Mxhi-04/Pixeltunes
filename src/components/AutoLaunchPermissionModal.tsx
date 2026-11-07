@@ -1,6 +1,11 @@
 import React from 'react';
 import { playClickSound } from '../services/soundEffects';
-import { setAutoLaunchPermission, launchSpotifyInBackground } from '../services/spotifyAutoLaunch';
+import {
+  setAutoLaunchPermission,
+  markAutoLaunchPrompted,
+  launchSpotifyInBackground,
+} from '../services/spotifyAutoLaunch';
+import { PixelSpotifyLogo } from './PixelSpotifyLogo';
 
 interface AutoLaunchPermissionModalProps {
   isOpen: boolean;
@@ -18,6 +23,7 @@ export const AutoLaunchPermissionModal: React.FC<AutoLaunchPermissionModalProps>
   const handleAccept = async () => {
     playClickSound();
     setAutoLaunchPermission('allowed');
+    markAutoLaunchPrompted();
     await launchSpotifyInBackground().catch(() => {});
     onClose();
     if (onAccepted) onAccepted();
@@ -26,6 +32,7 @@ export const AutoLaunchPermissionModal: React.FC<AutoLaunchPermissionModalProps>
   const handleDecline = () => {
     playClickSound();
     setAutoLaunchPermission('denied');
+    markAutoLaunchPrompted();
     onClose();
   };
 
@@ -67,8 +74,9 @@ export const AutoLaunchPermissionModal: React.FC<AutoLaunchPermissionModalProps>
         {/* Modal Content */}
         <div className="p-4 bg-[#fffdf5] text-[#191244] font-pixel space-y-3">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 shrink-0 bg-[#fec5db] border-2 border-[#191244] flex items-center justify-center text-lg shadow-pixel-xs">
-              ⚡
+            {/* Pixelated Spotify Logo Icon */}
+            <div className="w-10 h-10 shrink-0 bg-[#fffdf5] border-2 border-[#191244] flex items-center justify-center shadow-pixel-xs">
+              <PixelSpotifyLogo size={26} />
             </div>
             <div className="space-y-1">
               <h3 className="text-[12px] font-bold text-[#191244] tracking-wide">

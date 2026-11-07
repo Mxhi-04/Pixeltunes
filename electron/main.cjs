@@ -113,35 +113,34 @@ async function performPkceTokenRefresh() {
 
 /**
  * Launch Spotify Desktop App in background and automatically minimize/hide it.
- * macOS: Launches hidden and minimizes/hides via AppleScript
+ * macOS: Uses LaunchServices 'open -j -g -a Spotify' (launches hidden without stealing focus)
+ *        and Finder AppleScript (which requires NO assistive access permissions) to keep it minimized.
  * Windows: Launches minimized via start /min
  * Linux: Launches with --minimized flag
  */
 function launchSpotifyInBackground(callback) {
   const { exec } = require('child_process');
   if (process.platform === 'darwin') {
-    const appleScript = `
-      try
-        tell application "System Events"
-          set isRunning to (name of processes) contains "Spotify"
-        end tell
-        if isRunning then
-          tell application "System Events" to set visible of process "Spotify" to false
-        else
-          do shell script "open -j -g -a Spotify"
-          delay 0.8
-          tell application "System Events"
-            if (name of processes) contains "Spotify" then
-              set visible of process "Spotify" to false
-            end if
-          end tell
-        end if
-      on error
-        do shell script "open -g -a Spotify"
-      end try
-    `;
-    exec(`osascript -e '${appleScript.replace(/'/g, "'\\''")}'`, (err) => {
-      if (callback) callback(!err);
+    // 1. Immediately launch hidden without activating
+    exec('open -j -g -a Spotify', () => {
+      // 2. Hide Spotify via Finder (does not require assistive access/accessibility permissions)
+      const hideScript = 'osascript -e \'tell application "Finder" to if exists process "Spotify" then set visible of process "Spotify" to false\'';
+      
+      // Execute hide immediately, and at intervals to catch Spotify when its window finishes initializing
+      exec(hideScript);
+      setTimeout(() => exec(hideScript), 400);
+      setTimeout(() => exec(hideScript), 1000);
+      setTimeout(() => exec(hideScript), 2000);
+
+      // 3. Keep PixelTunes focused so Spotify never steals focus
+      setTimeout(() => {
+        const win = mainWindow || (BrowserWindow.getAllWindows && BrowserWindow.getAllWindows()[0]);
+        if (win && !win.isDestroyed()) {
+          try { win.focus(); } catch (e) {}
+        }
+      }, 500);
+
+      if (callback) callback(true);
     });
     return;
   }
