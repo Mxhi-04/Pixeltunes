@@ -54,14 +54,7 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
   });
 
   const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(() => {
-    if (initialLikedTrack) return initialLikedTrack;
-    if (initialLikedList && initialLikedList.length > 0) return initialLikedList[0];
-    try {
-      const stored = localStorage.getItem('pixeltunes_last_spotify_track');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
+    return initialLikedTrack || null;
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -73,25 +66,26 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
     if (initialLikedList && initialLikedList.length > 0) {
       setAllLikedTracks(initialLikedList);
       setQueueTracks(initialLikedList);
-      if (initialLikedTrack) {
-        setCurrentlyPlaying(initialLikedTrack);
-      } else {
-        setCurrentlyPlaying(initialLikedList[0]);
-      }
     }
-  }, [initialLikedList, initialLikedTrack]);
+  }, [initialLikedList]);
+
+  // Sync when initialLikedTrack updates
+  useEffect(() => {
+    if (initialLikedTrack) {
+      setCurrentlyPlaying(initialLikedTrack);
+    } else {
+      setCurrentlyPlaying(null);
+    }
+  }, [initialLikedTrack]);
 
   // Fetch strictly and ONLY Liked Songs - never switch to song author or album!
   const fetchQueue = useCallback(async () => {
     if (!isSpotifyConnected) return;
     try {
-      // 1. Sync currently playing track
+      // 1. Sync currently playing track ONLY when actively playing
       const current = await getCurrentlyPlaying().catch(() => null);
-      if (current?.item) {
+      if (current?.is_playing && current?.item) {
         setCurrentlyPlaying(current.item);
-        try {
-          localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(current.item));
-        } catch {}
       }
 
       // 2. Fetch authoritative Liked Songs playlist
@@ -261,9 +255,10 @@ export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
             ) : queueTracks.length > 0 ? (
               queueTracks.map((track, i) => {
                 const isSelected =
-                  activePlayingUri === track.uri ||
-                  currentlyPlaying?.uri === track.uri ||
-                  (currentlyPlaying?.name && currentlyPlaying?.name === track.name);
+                  Boolean(currentlyPlaying) &&
+                  (activePlayingUri === track.uri ||
+                    currentlyPlaying?.uri === track.uri ||
+                    (currentlyPlaying?.name && currentlyPlaying?.name === track.name));
                 return (
                   <div
                     key={`${track.id || track.uri}-${i}`}

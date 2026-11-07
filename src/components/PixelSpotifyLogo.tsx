@@ -67,3 +67,4 @@ export const PixelSpotifyLogo: React.FC<PixelSpotifyLogoProps> = ({
     </svg>
   );
 };
+

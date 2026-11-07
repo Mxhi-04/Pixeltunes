@@ -206,124 +206,70 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   const [selectedTrack, setSelectedTrack] = useState<any>(null);
   const [selectedTimestamp, setSelectedTimestamp] = useState<number>(0);
 
-  // Saved last played Spotify track from localStorage
-  const [savedSpotifyTrack, setSavedSpotifyTrack] = useState<any>(() => {
-    try {
-      const stored = localStorage.getItem('pixeltunes_last_spotify_track');
-      return stored ? JSON.parse(stored) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Tracks whether user has started playback during this session (defaults to false so we don't show old songs)
+  const [hasSessionPlaybackStarted, setHasSessionPlaybackStarted] = useState<boolean>(false);
 
-  // When initialLikedTrack is loaded on startup or connect, pause on it immediately!
+  // When live Spotify playback is actively running, mark session playback started
   useEffect(() => {
-    if (initialLikedTrack) {
-      setSavedSpotifyTrack(initialLikedTrack);
-      setOptimisticPlaying(false);
-      try {
-        localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(initialLikedTrack));
-      } catch {}
-    }
-  }, [initialLikedTrack]);
-
-  // Whenever authoritative Spotify item is active, update saved track unless user just clicked another track
-  useEffect(() => {
-    if (spotifyPlayback?.item) {
-      if (selectedTrack && Date.now() - selectedTimestamp < 5000) {
-        if (spotifyPlayback.item.id === selectedTrack.id || spotifyPlayback.item.name === selectedTrack.name) {
-          setSelectedTrack(null);
-          setSavedSpotifyTrack(spotifyPlayback.item);
-          try {
-            localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
-          } catch {}
-        }
-        return;
-      }
-
-      setSavedSpotifyTrack(spotifyPlayback.item);
-      try {
-        localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(spotifyPlayback.item));
-      } catch {}
-    }
-  }, [spotifyPlayback?.item, selectedTrack, selectedTimestamp]);
-
-  // Whenever Pixeltunes is opened: pause on the first song of user's Liked Songs playlist
-  useEffect(() => {
-    if (isSpotifyConnected && !spotifyPlayback?.is_playing && !initialLikedTrack) {
-      getLikedSongsSpotify(1).then((liked) => {
-        if (liked && liked.length > 0) {
-          const firstLiked = liked[0];
-          setSavedSpotifyTrack(firstLiked);
-          setOptimisticPlaying(false); // Paused on that very song
-          try {
-            localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(firstLiked));
-          } catch {}
-        } else {
-          // Fallback if liked songs empty or scope pending
-          getQueueSpotify().then((q) => {
-            const tr = q.currentlyPlaying || (q.queue && q.queue.length > 0 ? q.queue[0] : null);
-            if (tr) {
-              setSavedSpotifyTrack(tr);
-              setOptimisticPlaying(false);
-              try {
-                localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(tr));
-              } catch {}
-            }
-          }).catch(() => {});
-        }
-      }).catch(() => {});
-    }
-  }, [isSpotifyConnected, initialLikedTrack]);
-
-  // Sync and clear optimistic state whenever authoritative Spotify data arrives matching the active track
-  useEffect(() => {
-    if (
-      spotifyPlayback?.item?.id &&
-      savedSpotifyTrack?.id &&
-      (spotifyPlayback.item.id === savedSpotifyTrack.id || spotifyPlayback.item.name === savedSpotifyTrack.name)
-    ) {
+    if (spotifyPlayback?.is_playing) {
+      setHasSessionPlaybackStarted(true);
       setOptimisticPlaying(null);
     }
-  }, [spotifyPlayback?.is_playing, spotifyPlayback?.item?.id, spotifyPlayback?.item?.name, savedSpotifyTrack?.id, savedSpotifyTrack?.name]);
+  }, [spotifyPlayback?.is_playing]);
+
+  // When authoritative Spotify track arrives matching selected track, clear selection lock
+  useEffect(() => {
+    if (spotifyPlayback?.item && selectedTrack) {
+      if (spotifyPlayback.item.id === selectedTrack.id || spotifyPlayback.item.name === selectedTrack.name) {
+        setSelectedTrack(null);
+        setOptimisticPlaying(null);
+      }
+    }
+  }, [spotifyPlayback?.item, selectedTrack]);
 
   // Determine active playback source:
   // 1. User's recent selection (within 5s)
-  // 2. Authoritative live Spotify playback item
-  // 3. Saved / First Liked track
-  const isRecentSelection = selectedTrack && Date.now() - selectedTimestamp < 5000;
-  const activeSpotifyItem =
-    (isRecentSelection ? selectedTrack : null) ||
-    spotifyPlayback?.item ||
-    (isSpotifyConnected ? savedSpotifyTrack : null);
-  const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null;
+  // 2. Authoritative live Spotify playback item (when playing or session started)
+  const isRecentSelection = Boolean(selectedTrack && Date.now() - selectedTimestamp < 5000);
+  const isSpotifyPlayingNow = Boolean(spotifyPlayback?.is_playing);
+
+  // A Spotify track is ONLY active if Spotify is actively playing right now, or the user actively selected/played a song in this session!
+  // If user opens Pixeltunes and Spotify is idle/paused from a previous session, activeSpotifyItem is null ("NOTHING PLAYING")
+  const activeSpotifyItem = isRecentSelection
+    ? selectedTrack
+    : (isSpotifyPlayingNow || hasSessionPlaybackStarted)
+    ? (spotifyPlayback?.item || selectedTrack || null)
+    : null;
+
+  const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null && (isSpotifyPlayingNow || hasSessionPlaybackStarted);
+
   const isPlaying = optimisticPlaying !== null
     ? optimisticPlaying
-    : (hasActiveSpotifyPlayback ? (spotifyPlayback?.is_playing ?? false) : builtinPlaying);
+    : (isSpotifyConnected ? (hasActiveSpotifyPlayback && isSpotifyPlayingNow) : builtinPlaying);
 
   const currentTitle = hasActiveSpotifyPlayback
     ? activeSpotifyItem?.name || 'UNKNOWN TRACK'
-    : builtinTrack.name;
+    : (isSpotifyConnected ? 'NOTHING PLAYING' : (builtinPlaying ? builtinTrack.name : 'NOTHING PLAYING'));
 
   const currentArtist = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.artists.map((a: any) => a.name).join(', ') || 'UNKNOWN ARTIST'
-    : builtinTrack.artist;
+    ? activeSpotifyItem?.artists?.map((a: any) => a.name).join(', ') || 'UNKNOWN ARTIST'
+    : (isSpotifyConnected ? 'PRESS PLAY OR SELECT A SONG' : (builtinPlaying ? builtinTrack.artist : 'PRESS PLAY TO START'));
 
   const currentAlbum = hasActiveSpotifyPlayback
     ? activeSpotifyItem?.album?.name || ''
-    : builtinTrack.album;
+    : '';
 
   const albumArtUrl = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.album?.images[0]?.url || null
+    ? activeSpotifyItem?.album?.images?.[0]?.url || null
     : null;
 
   const durationMs = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.duration_ms || 180000
-    : builtinTrack.duration * 1000;
+    ? activeSpotifyItem?.duration_ms || 0
+    : (isSpotifyConnected ? 0 : (builtinPlaying ? builtinTrack.duration * 1000 : 0));
 
   const progressMs = hasActiveSpotifyPlayback
-    ? spotifyPlayback?.progress_ms || 0
-    : builtinPosition * 1000;
+    ? (spotifyPlayback?.progress_ms || 0)
+    : (isSpotifyConnected ? 0 : (builtinPlaying ? builtinPosition * 1000 : 0));
 
   const shuffleState = hasActiveSpotifyPlayback
     ? (spotifyPlayback?.shuffle_state ?? false)
@@ -335,6 +281,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   // Format milliseconds into MM:SS
   const formatTime = (ms: number) => {
+    if (!ms || ms <= 0 || isNaN(ms)) return '00:00';
     const totalSecs = Math.floor(ms / 1000);
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
@@ -347,6 +294,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     setOptimisticPlaying(nextPlaying);
 
     if (nextPlaying) {
+      setHasSessionPlaybackStarted(true);
       playPlaySound();
     } else {
       playPauseSound();
@@ -368,12 +316,16 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         setOptimisticPlaying(null);
       }
     } else {
+      if (nextPlaying) {
+        setHasSessionPlaybackStarted(true);
+      }
       lofiEngine.togglePlay();
     }
   };
 
   const handleNext = async () => {
     playSkipSound();
+    setHasSessionPlaybackStarted(true);
     if (hasActiveSpotifyPlayback || isSpotifyConnected) {
       await nextTrackSpotify();
       setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
@@ -385,6 +337,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   const handlePrev = async () => {
     playSkipSound();
+    setHasSessionPlaybackStarted(true);
     if (hasActiveSpotifyPlayback || isSpotifyConnected) {
       await previousTrackSpotify();
       setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
@@ -418,6 +371,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   const handleStop = async () => {
     setOptimisticPlaying(false);
+    setHasSessionPlaybackStarted(false);
+    setSelectedTrack(null);
     playPauseSound();
     if (hasActiveSpotifyPlayback || isSpotifyConnected) {
       try {
@@ -679,18 +634,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               isSpotifyConnected={isSpotifyConnected}
               onClose={() => setShowQueue(false)}
               onOpenSpotifyModal={onOpenSpotifyModal}
-              currentTrackTitle={currentTitle}
-              initialLikedTrack={initialLikedTrack}
+              currentTrackTitle={hasActiveSpotifyPlayback ? currentTitle : undefined}
+              initialLikedTrack={hasActiveSpotifyPlayback ? activeSpotifyItem : null}
               initialLikedList={initialLikedList}
               onTrackPlayed={(playedTrack) => {
                 if (playedTrack) {
                   setSelectedTrack(playedTrack);
                   setSelectedTimestamp(Date.now());
-                  setSavedSpotifyTrack(playedTrack);
+                  setHasSessionPlaybackStarted(true);
                   setOptimisticPlaying(true);
-                  try {
-                    localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(playedTrack));
-                  } catch {}
                 }
                 if (onPollSpotify) {
                   setTimeout(onPollSpotify, 400);

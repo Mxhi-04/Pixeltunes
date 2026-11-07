@@ -18,7 +18,7 @@ import {
   startSpotifyAutoRefreshLoop,
   onSessionRevoked,
   setStoredUserName,
-  loadAndPauseFirstLikedSong,
+  getLikedSongs,
   handleWebAuthCallback,
 } from './services/spotify';
 import {
@@ -80,16 +80,15 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  // Helper to load and pause user's first liked song on startup/connect
-  const syncFirstLikedSong = useCallback(async () => {
+  // Preload user's liked songs for the playlist drawer without forcing any track to play/show on startup
+  const preloadLikedSongsList = useCallback(async () => {
     try {
-      const res = await loadAndPauseFirstLikedSong();
-      if (res.firstTrack) {
-        setInitialLikedTrack(res.firstTrack);
-        setInitialLikedList(res.likedSongs);
+      const list = await getLikedSongs(50);
+      if (list && list.length > 0) {
+        setInitialLikedList(list);
       }
     } catch (e) {
-      console.error('Failed to sync first liked song:', e);
+      console.error('Failed to preload liked songs list:', e);
     }
   }, []);
 
@@ -122,15 +121,18 @@ export const App: React.FC = () => {
       // 0. Check if web browser returned from Spotify PKCE redirect
       await handleWebAuthCallback().catch(() => {});
 
-      // 1. Initial check: If user has a valid Keychain session with all scopes, connect & pause on 1st liked song
+      // 1. Initial check: If user has a valid Keychain session with all scopes, connect & fetch liked songs list
       const { valid, user, needsScopeUpgrade: upgradeRequired } = await validateSpotifyToken();
       if (valid && user && !upgradeRequired) {
         setIsSpotifyConnected(true);
         setUserName(user);
         setShowQuickConnect(false);
         setNeedsScopeUpgrade(false);
-        // Pause on the very first song of user's Liked Songs playlist whenever Pixeltunes is opened!
-        syncFirstLikedSong();
+        // Clear any old stored track so we start fresh with nothing playing
+        try {
+          localStorage.removeItem('pixeltunes_last_spotify_track');
+        } catch {}
+        preloadLikedSongsList();
 
         // If background auto-launch enabled, keep Spotify running in background
         if (isAutoLaunchEnabled()) {
@@ -163,8 +165,10 @@ export const App: React.FC = () => {
           colors: ['#fec5db', '#8fa2d4', '#9df0cf', '#ffd269'],
         });
 
-        // As soon as Pixeltunes is connected, pause on the first liked song playlist of the user!
-        syncFirstLikedSong();
+        try {
+          localStorage.removeItem('pixeltunes_last_spotify_track');
+        } catch {}
+        preloadLikedSongsList();
 
         // If background auto-launch enabled, keep Spotify running in background
         if (isAutoLaunchEnabled()) {
@@ -184,7 +188,7 @@ export const App: React.FC = () => {
       if (unsubscribeUpdated) unsubscribeUpdated();
       unsubscribeRevoked();
     };
-  }, [syncFirstLikedSong]);
+  }, [preloadLikedSongsList]);
 
   // Poll Spotify Playback State
   const pollSpotify = useCallback(async () => {
@@ -251,7 +255,7 @@ export const App: React.FC = () => {
     const name = getStoredUserName();
     setUserName(name);
     pollSpotify();
-    await syncFirstLikedSong();
+    await preloadLikedSongsList();
 
     // If background auto-launch enabled, keep Spotify running in background
     if (isAutoLaunchEnabled()) {
@@ -322,7 +326,7 @@ export const App: React.FC = () => {
             onScaleChange={handleScaleChange}
             isSpotifyConnected={isSpotifyConnected}
             spotifyPlayback={spotifyPlayback}
-            initialLikedTrack={initialLikedTrack}
+            initialLikedTrack={null}
             initialLikedList={initialLikedList}
             onPollSpotify={pollSpotify}
             onOpenSpotifyModal={() => setIsSpotifyModalOpen(true)}
@@ -335,7 +339,7 @@ export const App: React.FC = () => {
             isOpen={showQuickConnect}
             onClose={() => setShowQuickConnect(false)}
             needsScopeUpgrade={needsScopeUpgrade}
-            onConnected={syncFirstLikedSong}
+            onConnected={preloadLikedSongsList}
           />
 
           {/* First-Time Permission Prompt: Auto-Launch Spotify in Background */}
@@ -343,7 +347,7 @@ export const App: React.FC = () => {
             isOpen={showAutoLaunchModal}
             onClose={() => setShowAutoLaunchModal(false)}
             onAccepted={() => {
-              syncFirstLikedSong();
+              preloadLikedSongsList();
               pollSpotify();
             }}
           />
