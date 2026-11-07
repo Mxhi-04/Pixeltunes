@@ -1,9 +1,11 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
+import { ArtMode, RETRO_COVERS } from '../types/covers';
 
 interface PixelCanvasProps {
   isPlaying: boolean;
   albumArtUrl?: string | null;
-  mode: 'inspo' | 'pixelArt' | 'cassette';
+  mode: ArtMode;
+  retroCoverId?: string;
   pixelResolution?: number;
   trackTitle?: string;
   artistName?: string;
@@ -19,6 +21,7 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   isPlaying,
   albumArtUrl,
   mode,
+  retroCoverId = 'nyan_cat',
   pixelResolution = 180,
   trackTitle = 'FLY ME TO THE MOON',
   artistName = 'PIXEL JAZZ TRIO',
@@ -31,6 +34,22 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const animFrameRef = useRef<number | null>(null);
+
+  // Determine active Retro Animated Cover (user selected or song-hash fallback)
+  const isShowingRetroCover = mode === 'retroCover' || (mode === 'pixelArt' && !albumArtUrl);
+  const activeRetroCover = useMemo(() => {
+    if (mode === 'retroCover' && retroCoverId) {
+      return RETRO_COVERS.find((c) => c.id === retroCoverId) || RETRO_COVERS[0];
+    }
+    // Procedural track fallback: hash song title into one of the 20 legendary covers
+    let hash = 0;
+    const seed = trackTitle + artistName;
+    for (let i = 0; i < seed.length; i++) {
+      hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash) % RETRO_COVERS.length;
+    return RETRO_COVERS[idx];
+  }, [mode, retroCoverId, trackTitle, artistName]);
 
   // Cached image element of the currently active pixel cover (0ms draw in requestAnimationFrame)
   const cachedCoverImageRef = useRef<HTMLImageElement | null>(null);
@@ -350,12 +369,21 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
 
   return (
     <div className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none">
-      <canvas
-        ref={canvasRef}
-        width={240}
-        height={240}
-        className="w-full h-full object-contain pixelated"
-      />
+      {isShowingRetroCover ? (
+        <img
+          key={activeRetroCover.id}
+          src={activeRetroCover.gifUrl}
+          alt={activeRetroCover.name}
+          className="w-full h-full object-contain pixelated"
+        />
+      ) : (
+        <canvas
+          ref={canvasRef}
+          width={240}
+          height={240}
+          className="w-full h-full object-contain pixelated"
+        />
+      )}
     </div>
   );
 };
