@@ -255,7 +255,7 @@ function startPersistentAuthServer() {
                 <div class="card">
                   <h1>★ SPOTIFY CONNECTED! ★</h1>
                   <p>Connected as <strong>${userName}</strong>.</p>
-                  <p>Your <strong>Pixeltunes Player</strong> is synced and will auto-refresh seamlessly.</p>
+                  <p>Your <strong>Pixeltunes Player</strong> is synced and ready to play.</p>
                   <div class="badge">READY • YOU CAN CLOSE THIS TAB</div>
                 </div>
               </body>

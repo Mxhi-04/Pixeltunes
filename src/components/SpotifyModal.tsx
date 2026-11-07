@@ -61,7 +61,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
       unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated((payload) => {
         setIsWaitingAuth(false);
         const name = payload.user_name || 'SPOTIFY USER';
-        setStatusMsg(`★ Connected as ${name}! Auto-refresh active.`);
+        setStatusMsg(`★ Connected as ${name}!`);
         setIsError(false);
         onLoginSuccess();
         setTimeout(() => onClose(), 800);
@@ -282,18 +282,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                 </div>
               </div>
 
-              <div className="pt-1 flex justify-between items-center">
-                <button
-                  onClick={() => {
-                    playClickSound();
-                    forceExpireTokenForTesting();
-                    setStatusMsg('In-memory token marked expired! Next API call will auto-refresh silently in background.');
-                  }}
-                  title="Test token expiration: Next call will auto-refresh silently with zero UI change"
-                  className="px-2 py-1 bg-[#191244] text-[#ffd269] font-pixel text-[8px] border border-[#ffd269] hover:bg-[#2c2269] cursor-pointer"
-                >
-                  ⚡ TEST AUTO-REFRESH
-                </button>
+              <div className="pt-1 flex justify-end items-center">
                 <button
                   onClick={handleGoBack}
                   className="px-4 py-1.5 bg-[#fec5db] text-[#191244] font-pixel text-[10px] border-2 border-[#191244] shadow-pixel hover:bg-[#ffe6f0] cursor-pointer font-bold"
@@ -308,11 +297,8 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
               {/* 1-Click Browser Login Hero Card */}
               <div className="p-3 bg-[#191244] text-[#fffdf5] border-2 border-[#191244] shadow-pixel-sm space-y-2 text-center">
                 <div className="font-pixel text-[11px] text-[#9df0cf] tracking-wide font-bold">
-                  ★ 1-CLICK SPOTIFY CONNECT (PERMANENT AUTO-REFRESH) ★
+                  ★ 1-CLICK SPOTIFY CONNECT ★
                 </div>
-                <p className="text-[9px] text-[#ffe6f0] leading-relaxed">
-                  Generates both an Access Token & permanent Refresh Token for silent auto-renewal.
-                </p>
                 <button
                   onClick={handleStartOAuthLogin}
                   disabled={isWaitingAuth}
@@ -381,7 +367,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                   </a>
                 </div>
                 <p className="text-[8px] text-[#ff5270] leading-tight">
-                  ⚠️ Note: Pasted developer tokens expire after 1 hour (Spotify does not provide a refresh token with them). Use 1-Click Connect above for permanent auto-refresh.
+                  ⚠️ Note: Pasted developer tokens expire after 1 hour. Use 1-Click Connect above to stay connected.
                 </p>
                 <div className="flex gap-1.5">
                   <input
