@@ -33,6 +33,7 @@ button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cu
 
 html {
   overflow-x: clip;
+  scroll-behavior: smooth;
 }
 
 @layer base {
@@ -40,6 +41,30 @@ html {
     background-color: #0e0a1f;
     font-family: 'Silkscreen', 'Press Start 2P', monospace;
     overflow-x: clip;
+  }
+}
+
+/* Scroll-triggered reveal animations */
+.scroll-reveal {
+  opacity: 0;
+  transform: translateY(28px);
+  transition: opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1), transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: opacity, transform;
+}
+
+.scroll-reveal.is-revealed {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .scroll-reveal {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
   }
 }
 

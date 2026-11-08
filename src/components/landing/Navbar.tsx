@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Apple, Monitor, Download, Github, ExternalLink, Sparkles, Music } from 'lucide-react';
 import { useOperatingSystem } from '../../hooks/useOperatingSystem';
+import { usePageScrollProgress } from '../../hooks/useScrollAnimation';
 import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
 import { playClickSound } from '../../services/soundEffects';
 
@@ -11,6 +12,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({ onOpenPlayer }) => {
   const osInfo = useOperatingSystem();
   const [scrolled, setScrolled] = useState(false);
+  const scrollProgress = usePageScrollProgress();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -30,6 +32,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenPlayer }) => {
           : 'bg-transparent py-5'
       }`}
     >
+      {/* Global Scroll Reading Progress Bar (Neon Gradient) */}
+      <div
+        aria-hidden="true"
+        className="absolute top-0 left-0 h-[2.5px] bg-gradient-to-r from-[#ff5e7e] via-[#ffd269] to-[#00f5d4] transition-all duration-75 shadow-[0_0_8px_rgba(255,94,126,0.6)]"
+        style={{ width: `${scrollProgress}%` }}
+      />
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between gap-4">
         {/* Logo and Brand */}
         <a
