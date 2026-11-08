@@ -542,9 +542,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         } as any}
       >
         {/* Candy Buttons & Window Title */}
-        <div className="flex items-center gap-2 app-no-drag">
-          {/* 3 Retro Glossy Candy Buttons */}
-          <div className="flex items-center gap-1.5 mr-2">
+        <div className="flex items-center gap-2">
+          {/* 3 Retro Glossy Candy Buttons - NO DRAG */}
+          <div className="flex items-center gap-1.5 mr-2 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
             <button
               onClick={handleCloseWindow}
               title={window.electronAPI?.isElectron ? "Close Window" : "Stop"}
@@ -568,8 +568,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             </button>
           </div>
 
-          {/* Title and Text Emojis in dark navy color */}
-          <div className="flex items-center gap-2 select-none">
+          {/* Title and Text Emojis - DRAGGABLE */}
+          <div className="flex items-center gap-2 select-none pointer-events-none">
             <span className="font-pixel text-xs font-bold tracking-widest text-[#191244]">
               {windowTitle}
             </span>
@@ -586,10 +586,14 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           </div>
         </div>
 
+        {/* Center Draggable Spacer */}
+        <div className="flex-1 h-full min-w-4 pointer-events-none" />
+
         {/* Right Header: 7-Segment Digital Clock (24h) & Actions */}
-        <div className="flex items-center gap-2 app-no-drag">
+        <div className="flex items-center gap-2">
+          {/* Digital Clock - DRAGGABLE */}
           <div
-            className="text-sm font-bold text-[#191244] select-none flex items-center"
+            className="text-sm font-bold text-[#191244] select-none flex items-center pointer-events-none mr-1"
             title="Local Time (24h)"
           >
             <span
@@ -600,7 +604,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5">
+          {/* Interactive Action Buttons - NO DRAG */}
+          <div className="flex items-center gap-1.5 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
             {/* Vercel Web Link Button */}
             <a
               href="https://pixeltunes.vercel.app"
