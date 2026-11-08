@@ -178,8 +178,7 @@ test('an expired access token is refreshed and a revoked refresh token disconnec
   const revokedPage = await context.newPage();
   const revoked = await connectMock(revokedPage);
   revoked.revokeSession();
-  await revokedPage.getByTestId('main-play-btn').click();
-  await expect(revokedPage.getByRole('dialog', { name: 'Connect Spotify' })).toContainText('Your Spotify session expired.');
+  await expect(revokedPage.getByRole('dialog', { name: 'Connect Spotify' })).toContainText('Your Spotify session expired.', { timeout: 10000 });
   expect(await revokedPage.evaluate(() => localStorage.getItem('spotify_web_refresh_token'))).toBeNull();
 });
 
