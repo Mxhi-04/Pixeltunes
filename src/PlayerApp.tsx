@@ -228,8 +228,16 @@ export function App() {
   const frameWidth = portrait ? 420 : BASE_WIDTH;
   const frameHeight = portrait ? 630 : BASE_HEIGHT;
   const fit = Math.min(dimensions.width / frameWidth, dimensions.height / frameHeight);
-  const zoomScale = portrait ? fit * { tiny: 0.72, mini: 0.82, standard: 0.92, large: 0.97, xl: 1 }[scale]
-    : Math.min(fit, isElectron ? Infinity : SCALES[scale].width / BASE_WIDTH);
+  const zoomScale = portrait
+    ? fit * { tiny: 0.72, mini: 0.82, standard: 0.92, large: 0.97, xl: 1 }[scale]
+    : Math.min(
+        fit * 0.92,
+        isElectron
+          ? Infinity
+          : scale === 'standard'
+          ? Math.max(1, Math.min(1.2, fit * 0.85))
+          : SCALES[scale].width / BASE_WIDTH
+      );
   const [clickSparks, setClickSparks] = useState<Array<{ id: number; x: number; y: number }>>([]);
 
   useEffect(() => {
@@ -249,7 +257,7 @@ export function App() {
 
   return (
     <div
-      className="w-full h-full relative flex items-center justify-center overflow-hidden"
+      className="w-full min-h-screen relative flex items-center justify-center overflow-hidden"
       data-motion={reducedMotion ? 'off' : 'on'}
       data-theme={themeId}
       data-layout={portrait ? 'portrait' : 'landscape'}
@@ -263,7 +271,7 @@ export function App() {
               e.preventDefault();
               window.location.href = '/';
             }}
-            className="absolute top-3 left-3 z-50 px-2.5 py-1.5 bg-[#191244]/90 hover:bg-[#2c2269] text-[#fec5db] border-2 border-[#fec5db] text-[8px] font-pixel shadow-pixel-sm transition-all hover:scale-105 flex items-center gap-1.5"
+            className="absolute top-4 left-4 z-50 px-3 py-1.5 bg-[#191244]/90 hover:bg-[#2c2269] text-[#fec5db] border-2 border-[#fec5db] text-[8.5px] font-pixel shadow-pixel-sm transition-all hover:scale-105 flex items-center gap-1.5"
             title="Return to the PixelTunes website and download desktop apps"
           >
             <span>←</span>
@@ -278,7 +286,7 @@ export function App() {
         </>
       )}
 
-      <main className="w-full h-full flex items-center justify-center z-10 relative">
+      <main className="w-full min-h-screen flex items-center justify-center z-10 relative p-4">
         <div
           className="relative shrink-0"
           style={{ width: frameWidth, height: frameHeight, transform: `scale(${zoomScale})` }}
