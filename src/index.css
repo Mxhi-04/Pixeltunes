@@ -31,11 +31,15 @@ button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cu
   cursor: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABQAAAASCAYAAABb0P4QAAAAo0lEQVR4nK2UYQqDMAyFY/AE3a94G6WeejJvM3/NKzgyVwm2aErygRDFPF/yqA2coBC3VC/r1IAFCnGTSHEtqPhI7ypYC4IzbW2DKjQK8QigFEzaoyY05IfvzxP4uko1vXcXGsqbUoMGEhMi76F7jGDglU143k0NJHq5/o3s4DLH6pL+4RyheLlEq0C3mxiWdZozQQ+XxaNnES2exdpfVhqX6y8dy+YFzJb6OQAAAABJRU5ErkJggg==') 5 0, url('/cursors/pixel-pointer.png') 5 0, pointer !important;
 }
 
+html {
+  overflow-x: clip;
+}
+
 @layer base {
   body {
     background-color: #0e0a1f;
     font-family: 'Silkscreen', 'Press Start 2P', monospace;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 

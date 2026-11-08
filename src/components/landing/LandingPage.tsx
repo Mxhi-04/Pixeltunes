@@ -16,7 +16,7 @@ interface LandingPageProps {
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onOpenPlayer }) => {
   return (
-    <div className="min-h-screen bg-[#0a071c] text-[#fffdf5] selection:bg-[#fec5db] selection:text-[#191244] font-sans antialiased overflow-x-hidden">
+    <div className="min-h-screen bg-[#0a071c] text-[#fffdf5] selection:bg-[#fec5db] selection:text-[#191244] font-sans antialiased">
       {/* Fixed Navbar */}
       <Navbar onOpenPlayer={onOpenPlayer} />
 

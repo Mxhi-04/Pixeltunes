@@ -54,9 +54,9 @@ export const CinematicScroll: React.FC<CinematicScrollProps> = ({ onOpenPlayer }
   const activeTheme = THEMES[activeThemeId] || THEMES.inspo || Object.values(THEMES)[0];
 
   return (
-    <section id="preview" ref={containerRef} className="relative h-[300vh] bg-[#09071a]">
+    <section id="preview" ref={containerRef} className="relative h-[240vh] bg-[#09071a]">
       {/* Sticky 100vh Stage */}
-      <div className="sticky top-0 h-screen w-full flex flex-col justify-center items-center overflow-hidden px-4">
+      <div className="sticky top-0 h-screen w-full flex flex-col justify-center items-center overflow-hidden px-4 py-6">
         {/* Background Atmosphere Flare */}
         <div
           aria-hidden="true"
@@ -67,7 +67,7 @@ export const CinematicScroll: React.FC<CinematicScrollProps> = ({ onOpenPlayer }
         />
 
         {/* Floating Stamped Stage Label (dope.security style) */}
-        <div className="absolute top-20 z-30 flex flex-col items-center text-center">
+        <div className="mb-4 z-30 flex flex-col items-center text-center">
           <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#191244]/80 border border-white/20 font-silkscreen text-[9px] tracking-[0.2em] text-[#fffdf5] shadow-pixel-sm backdrop-blur-md">
             <span className="text-[#ffd269]">STAGE {currentStage} OF 3</span>
             <span className="text-white/30">|</span>
@@ -207,7 +207,7 @@ export const CinematicScroll: React.FC<CinematicScrollProps> = ({ onOpenPlayer }
         </div>
 
         {/* Narrative Callout Cards below window */}
-        <div className="mt-8 max-w-xl text-center z-20">
+        <div className="mt-6 max-w-xl text-center z-20 min-h-[72px] flex items-center justify-center">
           {currentStage === 1 && (
             <p className="font-sans text-sm sm:text-base text-[#cbd5e1] leading-relaxed animate-fadeIn">
               <strong className="text-[#fec5db] font-pixel text-[11px] block mb-1">
@@ -224,8 +224,8 @@ export const CinematicScroll: React.FC<CinematicScrollProps> = ({ onOpenPlayer }
               <strong className="text-[#ffd269] font-pixel text-[11px] block mb-1">
                 7 HAND-CRAFTED RETRO PALETTES
               </strong>
-              Switch instantly between Standard Pink, Cyberpunk Neon, Game Boy 1989 Pea-Soup,
-              Gothic Dracula, Lavender Mist, Sunset Twilight, and Emerald Mint.
+              Switch instantly between Inspo Pink, Vaporwave Neon, Game Boy Pea-Soup,
+              Moonlight Arcade, Bubblegum Pastel, Amber CRT, and Emerald Mint.
             </p>
           )}
 
