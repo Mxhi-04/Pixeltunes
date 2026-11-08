@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
 import { playClickSound } from '../../services/soundEffects';
+import { ScrollReveal } from '../../hooks/useScrollAnimation';
 
 interface FaqItem {
   q: string;
@@ -61,37 +62,38 @@ export const FaqSection: React.FC = () => {
           </p>
         </div>
 
-        {/* FAQ Accordion List */}
+        {/* FAQ Accordion List with Scroll Reveal */}
         <div className="space-y-3.5">
           {FAQS.map((faq, idx) => {
             const isOpen = openIndex === idx;
             return (
-              <div
-                key={idx}
-                className="bg-[#120d2b] border-2 border-[#191244] shadow-pixel-sm overflow-hidden transition-all duration-200"
-              >
-                <button
-                  type="button"
-                  onClick={() => toggle(idx)}
-                  className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-[#1a133d] transition-colors"
+              <ScrollReveal key={idx} delayMs={idx * 70}>
+                <div
+                  className="bg-[#120d2b] border-2 border-[#191244] shadow-pixel-sm overflow-hidden transition-all duration-200"
                 >
-                  <span className="font-pixel text-[10px] sm:text-[11.5px] text-[#fffdf5] flex items-center gap-2.5">
-                    <span className="text-[#fec5db]">{isOpen ? '▾' : '▸'}</span>
-                    <span>{faq.q}</span>
-                  </span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-[#ffd269] shrink-0 transition-transform duration-200 ${
-                      isOpen ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => toggle(idx)}
+                    className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-[#1a133d] transition-colors"
+                  >
+                    <span className="font-pixel text-[10px] sm:text-[11.5px] text-[#fffdf5] flex items-center gap-2.5">
+                      <span className="text-[#fec5db]">{isOpen ? '▾' : '▸'}</span>
+                      <span>{faq.q}</span>
+                    </span>
+                    <ChevronDown
+                      className={`w-4 h-4 text-[#ffd269] shrink-0 transition-transform duration-200 ${
+                        isOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
 
-                {isOpen && (
-                  <div className="px-5 pb-5 pt-1 border-t border-white/10 font-sans text-xs sm:text-sm text-[#cbd5e1] leading-relaxed">
-                    {faq.a}
-                  </div>
-                )}
-              </div>
+                  {isOpen && (
+                    <div className="px-5 pb-5 pt-1 border-t border-white/10 font-sans text-xs sm:text-sm text-[#cbd5e1] leading-relaxed">
+                      {faq.a}
+                    </div>
+                  )}
+                </div>
+              </ScrollReveal>
             );
           })}
         </div>

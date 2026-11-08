@@ -1,5 +1,6 @@
 import React from 'react';
 import { KeyRound, Radio, Palette, Tv, ShieldCheck, Cpu, Sliders, Music, Zap, Layers } from 'lucide-react';
+import { ScrollReveal } from '../../hooks/useScrollAnimation';
 
 interface FeatureCard {
   tag: string;
@@ -91,53 +92,54 @@ export const FeaturesGrid: React.FC = () => {
         {/* Feature Cards Grid (Dope.security + Unicorn Studio inspired) */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {FEATURES.map((feature, idx) => (
-            <div
-              key={idx}
-              className="group relative p-6 bg-[#120d2b]/80 hover:bg-[#1a133d] border-2 border-white/10 hover:border-white/30 shadow-pixel transition-all duration-200 flex flex-col justify-between"
-              style={{
-                boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.6)',
-              }}
-            >
-              <div>
-                {/* Card Header */}
-                <div className="flex items-center justify-between mb-4 font-silkscreen">
-                  <span className="text-[9px] text-[#cbd5e1]/50 tracking-widest">{feature.tag}</span>
-                  <span
-                    className="px-2 py-0.5 border text-[7.5px] font-pixel"
-                    style={{
-                      borderColor: `${feature.accent}50`,
-                      color: feature.accent,
-                      backgroundColor: `${feature.accent}15`,
-                    }}
-                  >
-                    {feature.badge}
-                  </span>
-                </div>
-
-                {/* Icon & Title */}
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2.5 bg-[#191244] border-2 border-[#191244] shadow-pixel-sm">
-                    {feature.icon}
-                  </div>
-                  <h3 className="font-pixel text-[11px] font-bold text-[#fffdf5] tracking-wide group-hover:text-[#fec5db] transition-colors">
-                    {feature.title}
-                  </h3>
-                </div>
-
-                {/* Description */}
-                <p className="font-sans text-xs sm:text-sm text-[#cbd5e1]/80 leading-relaxed">
-                  {feature.description}
-                </p>
-              </div>
-
-              {/* Bottom Hairline Highlight */}
+            <ScrollReveal key={idx} delayMs={idx * 80} className="h-full">
               <div
-                className="mt-6 pt-3 border-t border-white/10 flex items-center justify-between text-[9px] font-silkscreen text-[#cbd5e1]/50"
+                className="group relative p-6 bg-[#120d2b]/80 hover:bg-[#1a133d] border-2 border-white/10 hover:border-white/30 shadow-pixel transition-all duration-300 flex flex-col justify-between h-full hover:-translate-y-1"
+                style={{
+                  boxShadow: '4px 4px 0px 0px rgba(0,0,0,0.6)',
+                }}
               >
-                <span>NATIVE DESKTOP CAPABILITY</span>
-                <span className="text-[#57f287]">● VERIFIED</span>
+                <div>
+                  {/* Card Header */}
+                  <div className="flex items-center justify-between mb-4 font-silkscreen">
+                    <span className="text-[9px] text-[#cbd5e1]/50 tracking-widest">{feature.tag}</span>
+                    <span
+                      className="px-2 py-0.5 border text-[7.5px] font-pixel"
+                      style={{
+                        borderColor: `${feature.accent}50`,
+                        color: feature.accent,
+                        backgroundColor: `${feature.accent}15`,
+                      }}
+                    >
+                      {feature.badge}
+                    </span>
+                  </div>
+
+                  {/* Icon & Title */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="p-2.5 bg-[#191244] border-2 border-[#191244] shadow-pixel-sm">
+                      {feature.icon}
+                    </div>
+                    <h3 className="font-pixel text-[11px] font-bold text-[#fffdf5] tracking-wide group-hover:text-[#fec5db] transition-colors">
+                      {feature.title}
+                    </h3>
+                  </div>
+
+                  {/* Description */}
+                  <p className="font-sans text-xs sm:text-sm text-[#cbd5e1]/80 leading-relaxed">
+                    {feature.description}
+                  </p>
+                </div>
+
+                {/* Bottom Hairline Highlight */}
+                <div
+                  className="mt-6 pt-3 border-t border-white/10 flex items-center justify-between text-[9px] font-silkscreen text-[#cbd5e1]/50"
+                >
+                  <span>NATIVE DESKTOP CAPABILITY</span>
+                  <span className="text-[#57f287]">● VERIFIED</span>
+                </div>
               </div>
-            </div>
+            </ScrollReveal>
           ))}
         </div>
       </div>

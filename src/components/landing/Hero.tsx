@@ -1,12 +1,17 @@
 import React from 'react';
 import { Sparkles, Radio, ShieldCheck, Zap, Disc3, Music2 } from 'lucide-react';
 import { DownloadButtons } from './DownloadButtons';
+import { useScrollParallax } from '../../hooks/useScrollAnimation';
 
 interface HeroProps {
   onOpenPlayer: () => void;
 }
 
 export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
+  const kirbyOffset = useScrollParallax(-0.18);
+  const nyanOffset = useScrollParallax(-0.22);
+  const campfireOffset = useScrollParallax(0.14);
+  const pikachuOffset = useScrollParallax(0.1);
   return (
     <section className="relative min-h-[92vh] pt-32 pb-20 px-4 sm:px-6 flex flex-col justify-center items-center overflow-hidden">
       {/* Background Aurora Glow (Unicorn Studio inspired) */}
@@ -32,11 +37,14 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
         }}
       />
 
-      {/* Floating Retro Game-World Mascots (Discord reference) */}
+      {/* Floating Retro Game-World Mascots with Parallax Motion (Discord reference) */}
       <div
         aria-hidden="true"
-        className="hidden lg:block absolute left-8 top-44 pointer-events-none z-10 animate-bounce"
-        style={{ animationDuration: '6s' }}
+        className="hidden lg:block absolute left-8 top-44 pointer-events-none z-10 transition-transform duration-100 ease-out animate-bounce"
+        style={{
+          animationDuration: '6s',
+          transform: `translateY(${kirbyOffset}px)`,
+        }}
       >
         <div className="relative p-2 bg-[#191244]/80 border-2 border-[#fec5db] shadow-pixel-sm backdrop-blur-md">
           <img
@@ -52,8 +60,11 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
 
       <div
         aria-hidden="true"
-        className="hidden lg:block absolute right-12 top-48 pointer-events-none z-10 animate-bounce"
-        style={{ animationDuration: '7s' }}
+        className="hidden lg:block absolute right-12 top-48 pointer-events-none z-10 transition-transform duration-100 ease-out animate-bounce"
+        style={{
+          animationDuration: '7s',
+          transform: `translateY(${nyanOffset}px)`,
+        }}
       >
         <div className="relative p-2 bg-[#191244]/80 border-2 border-[#9df0cf] shadow-pixel-sm backdrop-blur-md">
           <img
@@ -69,7 +80,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
 
       <div
         aria-hidden="true"
-        className="hidden xl:block absolute right-24 bottom-24 pointer-events-none z-10"
+        className="hidden xl:block absolute right-24 bottom-24 pointer-events-none z-10 transition-transform duration-100 ease-out"
+        style={{
+          transform: `translateY(${campfireOffset}px)`,
+        }}
       >
         <div className="relative p-2 bg-[#191244]/80 border-2 border-[#ffd269] shadow-pixel-sm backdrop-blur-md">
           <img
@@ -85,7 +99,10 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
 
       <div
         aria-hidden="true"
-        className="hidden xl:block absolute left-20 bottom-24 pointer-events-none z-10"
+        className="hidden xl:block absolute left-20 bottom-24 pointer-events-none z-10 transition-transform duration-100 ease-out"
+        style={{
+          transform: `translateY(${pikachuOffset}px)`,
+        }}
       >
         <div className="relative p-2 bg-[#191244]/80 border-2 border-[#8fa2d4] shadow-pixel-sm backdrop-blur-md">
           <img
