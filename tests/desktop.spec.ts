@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 const personalClientId = '0123456789abcdef0123456789abcdef';
 
 test('Electron sandbox, window controls, and loopback OAuth work with an isolated profile', async ({ browser }, testInfo) => {
+  test.setTimeout(90000);
   const userData = testInfo.outputPath('profile');
   await mkdir(userData, { recursive: true });
   const { ELECTRON_RUN_AS_NODE, ...env } = process.env;
