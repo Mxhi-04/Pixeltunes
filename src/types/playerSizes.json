@@ -1,0 +1,7 @@
+{
+  "tiny": { "label": "Tiny", "width": 480, "height": 273 },
+  "mini": { "label": "Compact", "width": 540, "height": 308 },
+  "standard": { "label": "Standard", "width": 720, "height": 410 },
+  "large": { "label": "Expanded", "width": 960, "height": 546 },
+  "xl": { "label": "Extra Large", "width": 1152, "height": 656 }
+}

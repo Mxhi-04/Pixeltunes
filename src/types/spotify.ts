@@ -26,14 +26,31 @@ export interface SpotifyTrack {
   uri: string;
 }
 
-export interface SpotifyDevice {
+export interface SpotifyPlaylist {
   id: string;
+  name: string;
+  uri: string;
+  owner?: { display_name?: string | null };
+}
+
+export interface SpotifyDevice {
+  id: string | null;
   is_active: boolean;
   is_private_session: boolean;
   is_restricted: boolean;
   name: string;
   type: string;
-  volume_percent: number;
+  volume_percent: number | null;
+  supports_volume?: boolean;
+}
+
+export interface SpotifyEpisode {
+  id: string;
+  name: string;
+  uri: string;
+  duration_ms: number;
+  show?: { name: string };
+  images?: SpotifyImage[];
 }
 
 export interface SpotifyPlaybackState {
@@ -41,7 +58,7 @@ export interface SpotifyPlaybackState {
   repeat_state: 'off' | 'track' | 'context';
   shuffle_state: boolean;
   is_playing: boolean;
-  item: SpotifyTrack | null;
+  item: (SpotifyTrack & { show?: never; images?: never }) | (SpotifyEpisode & { artists?: never; album?: never }) | null;
   progress_ms: number;
 }
 

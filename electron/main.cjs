@@ -1,16 +1,26 @@
-const { app, BrowserWindow, ipcMain, shell, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, ipcMain, shell, screen, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const os = require('os');
 const http = require('http');
 const crypto = require('crypto');
+const playerSizes = require('../src/types/playerSizes.json');
+const { results: authResults, sendSpotifyResult } = require('./spotify-result.cjs');
 
+const isMac = process.platform === 'darwin';
+const appIconPath = fs.existsSync(path.join(__dirname, 'assets', 'icon.png'))
+  ? path.join(__dirname, 'assets', 'icon.png')
+  : path.join(__dirname, '../assets/pixeltunes-icon.png');
 let mainWindow = null;
+let tray = null;
+let isQuitting = false;
 let isAlwaysOnTop = true;
+let playerScale = 'standard';
 let persistentAuthServer = null;
 
 // Spotify PKCE Public Client (No Client Secret Required Anywhere!)
-const SPOTIFY_CLIENT_ID = '0e51fa9c7bfb4df7b72cfa5d72d87df0';
+const SPOTIFY_CLIENT_ID = process.env.VITE_SPOTIFY_CLIENT_ID ||
+  require('../package.json').config?.spotifyClientId || '0e51fa9c7bfb4df7b72cfa5d72d87df0';
+const SPOTIFY_CALLBACK_ORIGIN = 'http://127.0.0.1:8888';
 const SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8888/callback';
 const SPOTIFY_SCOPES = [
   'user-read-playback-state',
@@ -22,592 +32,282 @@ const SPOTIFY_SCOPES = [
   'user-read-recently-played',
 ];
 
-// Secure Refresh Token Storage using macOS Keychain (via Electron safeStorage)
+const tokenEndpoint = 'https://accounts.spotify.com/api/token';
+let pendingLogin = null;
+let sessionVersion = 0;
+let activeRefresh = null;
+let savedSession = null;
+let lastClientId = SPOTIFY_CLIENT_ID;
+
+function getSpotifyClientIdPath() {
+  return path.join(app.getPath('userData'), 'spotify_client_id');
+}
+
+function rememberSpotifyClientId(clientId) {
+  lastClientId = clientId;
+  try {
+    const file = getSpotifyClientIdPath();
+    if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8') !== clientId) {
+      fs.writeFileSync(file, clientId, { mode: 0o600 });
+    }
+  } catch {
+    console.warn('[Spotify] Could not save the Spotify Client ID preference.');
+  }
+}
+
 function getSecureTokenPath() {
   return path.join(app.getPath('userData'), 'spotify_refresh.token');
 }
 
-async function saveRefreshTokenSecurely(refreshToken) {
-  if (!refreshToken) return;
+async function saveRefreshToken(session, version) {
+  if (version !== sessionVersion) return;
+  savedSession = session;
+  rememberSpotifyClientId(session.clientId);
   try {
-    const tokenPath = getSecureTokenPath();
-    if (safeStorage && typeof safeStorage.encryptStringAsync === 'function') {
-      const encrypted = await safeStorage.encryptStringAsync(refreshToken);
-      fs.writeFileSync(tokenPath, encrypted);
-    } else if (safeStorage && typeof safeStorage.encryptString === 'function' && safeStorage.isEncryptionAvailable()) {
-      const encrypted = safeStorage.encryptString(refreshToken);
-      fs.writeFileSync(tokenPath, encrypted);
-    } else {
-      fs.writeFileSync(tokenPath, Buffer.from(refreshToken, 'utf8'), { mode: 0o600 });
+    if (!await safeStorage.isAsyncEncryptionAvailable()) return;
+    if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return;
+    const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(session));
+    if (version === sessionVersion && savedSession === session) {
+      const tokenPath = getSecureTokenPath();
+      fs.writeFileSync(`${tokenPath}.tmp`, encrypted, { mode: 0o600 });
+      fs.renameSync(`${tokenPath}.tmp`, tokenPath);
     }
-  } catch (err) {
-    // Never print token or sensitive data
-    console.error('[Auth Storage] Failed to securely persist refresh token');
+  } catch {
+    console.warn('[Spotify] Secure token storage is unavailable. This session is in memory.');
   }
 }
 
-async function loadRefreshTokenSecurely() {
+async function loadRefreshToken() {
+  const version = sessionVersion;
+  if (savedSession) return savedSession;
   try {
-    const tokenPath = getSecureTokenPath();
-    if (!fs.existsSync(tokenPath)) return null;
-    const buffer = fs.readFileSync(tokenPath);
-    if (safeStorage && typeof safeStorage.decryptStringAsync === 'function') {
-      return await safeStorage.decryptStringAsync(buffer);
-    }
-    if (safeStorage && typeof safeStorage.decryptString === 'function' && safeStorage.isEncryptionAvailable()) {
-      return safeStorage.decryptString(buffer);
-    }
-    return buffer.toString('utf8');
-  } catch (err) {
+    const buffer = fs.readFileSync(getSecureTokenPath());
+    if (!await safeStorage.isAsyncEncryptionAvailable()) return null;
+    if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return null;
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(buffer);
+    if (!result || version !== sessionVersion) return null;
+    // Older releases encrypted the token by itself.
+    const session = result.startsWith('{') ? JSON.parse(result) : { refreshToken: result, clientId: SPOTIFY_CLIENT_ID };
+    if (typeof session.refreshToken !== 'string' || !/^[a-f0-9]{32}$/i.test(session.clientId)) return null;
+    savedSession = session;
+    rememberSpotifyClientId(session.clientId);
+    if (shouldReEncrypt) void saveRefreshToken(session, version);
+    return session;
+  } catch {
     return null;
   }
 }
 
-function clearRefreshTokenSecurely() {
-  try {
-    const tokenPath = getSecureTokenPath();
-    if (fs.existsSync(tokenPath)) {
-      fs.unlinkSync(tokenPath);
-    }
-  } catch (err) {}
+function clearSession() {
+  sessionVersion++;
+  pendingLogin = null;
+  savedSession = null;
+  const tokenPath = getSecureTokenPath();
+  fs.rmSync(tokenPath, { force: true });
+  fs.rmSync(`${tokenPath}.tmp`, { force: true });
 }
 
-let activePkceVerifier = '';
+async function requestToken(params, clientId) {
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: clientId, ...params }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json();
+  return response.ok ? data : { error: data.error || 'token_request_failed' };
+}
 
-// PKCE Authorization Code & Refresh Logic (Pure Public Client)
-async function performPkceTokenRefresh() {
-  const refreshToken = await loadRefreshTokenSecurely();
-  if (!refreshToken) {
-    return { error: 'no_refresh_token' };
-  }
-
-  try {
-    const res = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: SPOTIFY_CLIENT_ID,
-        grant_type: 'refresh_token',
-        refresh_token: refreshToken,
-      }),
-    });
-
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      if (res.status === 400 && data.error === 'invalid_grant') {
-        console.warn('[Spotify Auth] Refresh token was revoked (invalid_grant). Clearing stored session.');
-        clearRefreshTokenSecurely();
-        return { error: 'invalid_grant' };
+function performPkceTokenRefresh() {
+  const version = sessionVersion;
+  if (activeRefresh?.version === version) return activeRefresh.promise;
+  const promise = (async () => {
+    try {
+      const session = await loadRefreshToken();
+      if (!session || version !== sessionVersion) return { error: 'no_refresh_token' };
+      const data = await requestToken({
+        grant_type: 'refresh_token', refresh_token: session.refreshToken,
+      }, session.clientId);
+      if (version !== sessionVersion) return { error: 'session_changed' };
+      if (data.error === 'invalid_grant') {
+        clearSession();
+        return data;
       }
-      return { error: data.error || `HTTP ${res.status}` };
+      if (data.refresh_token) void saveRefreshToken({ ...session, refreshToken: data.refresh_token }, version);
+      if (version !== sessionVersion) return { error: 'session_changed' };
+      return { access_token: data.access_token, expires_in: data.expires_in, error: data.error };
+    } catch {
+      return { error: 'network_error' };
+    } finally {
+      if (activeRefresh?.version === version) activeRefresh = null;
     }
+  })();
+  activeRefresh = { version, promise };
+  return promise;
+}
 
-    // If Spotify rotated the refresh token, securely store the new one in Keychain
-    if (data.refresh_token) {
-      await saveRefreshTokenSecurely(data.refresh_token);
-    }
-
-    return {
-      access_token: data.access_token,
-      expires_in: data.expires_in || 3600,
-    };
-  } catch (netErr) {
-    return { error: 'network_error' };
+function launchSpotifyInBackground(callback) {
+  const { exec, execFile, spawn } = require('child_process');
+  if (process.platform === 'darwin') {
+    execFile('/usr/bin/open', ['-j', '-g', '-b', 'com.spotify.client'], (error) => callback(!error));
+  } else if (process.platform === 'win32') {
+    exec('start "" /min "spotify:"', (error) => callback(!error));
+  } else if (process.platform === 'linux') {
+    const child = spawn('spotify', ['--minimized'], { detached: true, stdio: 'ignore' });
+    child.once('error', () => callback(false));
+    child.once('spawn', () => {
+      child.unref();
+      callback(true);
+    });
+  } else {
+    callback(false);
   }
 }
 
-/**
- * Launch Spotify Desktop App in background and automatically minimize/hide it.
- * macOS: Uses LaunchServices 'open -j -g -a Spotify' (launches hidden without stealing focus)
- *        and Finder AppleScript (which requires NO assistive access permissions) to keep it minimized.
- * Windows: Launches minimized via start /min
- * Linux: Launches with --minimized flag
- */
-function launchSpotifyInBackground(callback) {
-  const { exec } = require('child_process');
-  if (process.platform === 'darwin') {
-    // 1. Immediately launch hidden without activating
-    exec('open -j -g -a Spotify', () => {
-      // 2. Hide Spotify via Finder (does not require assistive access/accessibility permissions)
-      const hideScript = 'osascript -e \'tell application "Finder" to if exists process "Spotify" then set visible of process "Spotify" to false\'';
-      
-      // Execute hide immediately, and at intervals to catch Spotify when its window finishes initializing
-      exec(hideScript);
-      setTimeout(() => exec(hideScript), 400);
-      setTimeout(() => exec(hideScript), 1000);
-      setTimeout(() => exec(hideScript), 2000);
+async function openSpotify() {
+  try {
+    if (isMac) {
+      const { execFile } = require('child_process');
+      await new Promise((resolve, reject) => {
+        execFile('/usr/bin/open', ['-b', 'com.spotify.client'], (error) => error ? reject(error) : resolve());
+      });
+    } else {
+      await shell.openExternal('spotify:');
+    }
+    return 'desktop';
+  } catch {
+    try {
+      await shell.openExternal('https://open.spotify.com/');
+      return 'web';
+    } catch {
+      return 'unavailable';
+    }
+  }
+}
 
-      // 3. Keep PixelTunes focused so Spotify never steals focus
-      setTimeout(() => {
-        const win = mainWindow || (BrowserWindow.getAllWindows && BrowserWindow.getAllWindows()[0]);
-        if (win && !win.isDestroyed()) {
-          try { win.focus(); } catch (e) {}
-        }
-      }, 500);
+function redirectSpotifyResult(res, outcome, login) {
+  const params = new URLSearchParams({ status: outcome });
+  if (login?.theme) params.set('theme', login.theme);
+  if (login?.motion === 'off') params.set('motion', 'off');
+  res.writeHead(303, { Location: `/callback/result?${params}` }).end();
+}
 
-      if (callback) callback(true);
-    });
-    return;
-  }
-  if (process.platform === 'win32') {
-    exec('start "" /min "spotify:"', (err) => {
-      if (callback) callback(!err);
-    });
-    return;
-  }
-  if (process.platform === 'linux') {
-    exec('spotify --minimized &', (err) => {
-      if (callback) callback(!err);
-    });
-    return;
-  }
-  if (callback) callback(false);
+function finishSpotifyAuth(res, outcome, login, payload = {}) {
+  mainWindow?.webContents.send('auth:token-updated', {
+    ...payload,
+    error: outcome === 'connected' ? undefined : authResults[outcome].detail,
+    forbidden: outcome === 'forbidden',
+  });
+  showPlayer();
+  redirectSpotifyResult(res, outcome, login);
 }
 
 function startPersistentAuthServer() {
-  if (persistentAuthServer) {
-    try { persistentAuthServer.close(); } catch (e) {}
-  }
+  return new Promise((resolve) => {
+    persistentAuthServer = http.createServer(async (req, res) => {
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      if (req.method !== 'GET' || req.headers.host !== '127.0.0.1:8888' || !req.url) {
+        res.writeHead(404).end('Not found');
+        return;
+      }
 
-  persistentAuthServer = http.createServer(async (req, res) => {
-    // CORS headers for local page access
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+      const url = new URL(req.url, SPOTIFY_CALLBACK_ORIGIN);
+      const params = url.searchParams;
+      if (url.pathname === '/callback/result') {
+        const outcome = params.get('status');
+        if (Object.hasOwn(authResults, outcome)) {
+          sendSpotifyResult(res, outcome, params.get('theme'), params.get('motion'));
+        } else {
+          res.writeHead(404).end('Not found');
+        }
+        return;
+      }
+      if (url.pathname === '/callback/logo.png') {
+        try {
+          const logo = await fs.promises.readFile(appIconPath);
+          res.writeHead(200, { 'Content-Type': 'image/png', 'X-Content-Type-Options': 'nosniff' }).end(logo);
+        } catch {
+          res.writeHead(404).end('Not found');
+        }
+        return;
+      }
+      if (url.pathname !== '/callback' || !url.search) {
+        res.writeHead(404).end('Not found');
+        return;
+      }
+      const login = pendingLogin;
+      if (!login || login.expiresAt <= Date.now() || params.get('state') !== login.state) {
+        redirectSpotifyResult(res, 'expired', login);
+        return;
+      }
 
-    if (req.method === 'OPTIONS') {
-      res.writeHead(200);
-      res.end();
-      return;
-    }
+      pendingLogin = null;
+      const code = params.get('code');
+      if (!code || params.has('error')) {
+        finishSpotifyAuth(res, 'cancelled', login);
+        return;
+      }
 
-    try {
-      const parsedUrl = new URL(req.url, 'http://127.0.0.1:8888');
-
-      // 1. /login: Start PKCE OAuth in default browser
-      if (parsedUrl.pathname === '/login') {
-        activePkceVerifier = crypto.randomBytes(64).toString('base64url');
-        const challenge = crypto.createHash('sha256').update(activePkceVerifier).digest('base64url');
-
-        const params = new URLSearchParams({
-          response_type: 'code',
-          client_id: SPOTIFY_CLIENT_ID,
-          scope: SPOTIFY_SCOPES.join(' '),
+      try {
+        const data = await requestToken({
+          grant_type: 'authorization_code',
+          code,
           redirect_uri: SPOTIFY_REDIRECT_URI,
-          code_challenge_method: 'S256',
-          code_challenge: challenge,
+          code_verifier: login.verifier,
+        }, login.clientId);
+        if (login.version !== sessionVersion) {
+          redirectSpotifyResult(res, 'expired', login);
+          return;
+        }
+        if (!data.access_token) {
+          finishSpotifyAuth(res, 'unavailable', login);
+          return;
+        }
+
+        const access = await fetch('https://api.spotify.com/v1/me/player/devices', {
+          headers: { Authorization: `Bearer ${data.access_token}` },
+          signal: AbortSignal.timeout(8000),
         });
-
-        const authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
-        res.writeHead(302, { Location: authUrl });
-        res.end();
-        return;
-      }
-
-      // 2. /callback: Receive authorization code from Spotify and exchange using PKCE
-      if (parsedUrl.pathname === '/callback') {
-        const code = parsedUrl.searchParams.get('code');
-        const error = parsedUrl.searchParams.get('error');
-
-        if (error) {
-          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-          res.end(`
-            <!DOCTYPE html>
-            <html>
-            <head><title>Spotify Authorization Cancelled</title></head>
-            <body style="background:#120e29;color:#ff7b90;font-family:monospace;text-align:center;padding:50px;">
-              <h2>Login Cancelled or Declined</h2>
-              <p>${error}</p>
-              <p><a href="/login" style="color:#9df0cf;">Click here to try again</a></p>
-            </body>
-            </html>
-          `);
+        if (login.version !== sessionVersion) {
+          redirectSpotifyResult(res, 'expired', login);
+          return;
+        }
+        if (!access.ok) {
+          finishSpotifyAuth(res, access.status === 403 ? 'forbidden' : 'unavailable', login);
           return;
         }
 
-        if (code) {
-          try {
-            // Exchange code via PKCE (No Client Secret!)
-            const tokenRes = await fetch('https://accounts.spotify.com/api/token', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-              body: new URLSearchParams({
-                client_id: SPOTIFY_CLIENT_ID,
-                grant_type: 'authorization_code',
-                code: code,
-                redirect_uri: SPOTIFY_REDIRECT_URI,
-                code_verifier: activePkceVerifier,
-              }),
-            });
-
-            if (!tokenRes.ok) {
-              const errData = await tokenRes.json().catch(() => ({}));
-              res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-              res.end(`
-                <!DOCTYPE html>
-                <html>
-                <head><title>Authentication Error</title></head>
-                <body style="background:#120e29;color:#ff7b90;font-family:monospace;text-align:center;padding:50px;">
-                  <h2>Authentication Error</h2>
-                  <p>${errData.error_description || 'Invalid authorization code or verifier'}</p>
-                  <p><a href="/login" style="color:#9df0cf;">Click here to retry</a></p>
-                </body>
-                </html>
-              `);
-              return;
-            }
-
-            const tokenData = await tokenRes.json();
-            const accessToken = tokenData.access_token;
-            const refreshToken = tokenData.refresh_token || '';
-            const expiresIn = tokenData.expires_in || 3600;
-
-            // Persist refresh token securely in macOS Keychain (never in localStorage/logs)
-            if (refreshToken) {
-              await saveRefreshTokenSecurely(refreshToken);
-            }
-
-            // Fetch user profile name
-            let userName = 'SPOTIFY USER';
-            try {
-              const userRes = await fetch('https://api.spotify.com/v1/me', {
-                headers: { Authorization: `Bearer ${accessToken}` },
-              });
-              if (userRes.ok) {
-                const uProfile = await userRes.json();
-                userName = (uProfile.display_name || uProfile.id || 'SPOTIFY USER').toUpperCase();
-              }
-            } catch (e) {}
-
-            // Send in-memory credentials to Electron renderer (NO page reload, NO UI disruption!)
-            if (mainWindow && !mainWindow.isDestroyed()) {
-              mainWindow.webContents.send('auth:token-updated', {
-                access_token: accessToken,
-                expires_in: expiresIn,
-                user_name: userName,
-              });
-            }
-
-            // Success Page in browser
-            res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-            res.end(`
-              <!DOCTYPE html>
-              <html>
-              <head>
-                <meta charset="utf-8">
-                <title>Pixel Player - Connected!</title>
-                <style>
-                  body { background-color: #120e29; color: #fec5db; font-family: monospace, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-                  .card { background: #191244; border: 4px solid #fec5db; padding: 40px; box-shadow: 8px 8px 0px #fec5db; max-width: 480px; }
-                  h1 { font-size: 22px; color: #9df0cf; margin-top: 0; }
-                  p { color: #ffe6f0; font-size: 14px; line-height: 1.6; }
-                  .badge { display: inline-block; background: #9df0cf; color: #191244; font-weight: bold; padding: 8px 16px; margin-top: 20px; font-size: 13px; letter-spacing: 1px; }
-                </style>
-              </head>
-              <body>
-                <div class="card">
-                  <h1>★ SPOTIFY CONNECTED! ★</h1>
-                  <p>Connected as <strong>${userName}</strong>.</p>
-                  <p>Your <strong>Pixeltunes Player</strong> is synced and ready to play.</p>
-                  <div class="badge">READY • YOU CAN CLOSE THIS TAB</div>
-                </div>
-              </body>
-              </html>
-            `);
-            return;
-          } catch (exchangeErr) {
-            console.error('[Auth Server] Token exchange error');
-          }
+        const version = ++sessionVersion;
+        savedSession = null;
+        rememberSpotifyClientId(login.clientId);
+        try { fs.rmSync(getSecureTokenPath(), { force: true }); } catch {
+          console.warn('[Spotify] Could not replace the previous saved session.');
         }
-      }
-
-      // 3. /api/auth/refresh: API endpoint for silent background refresh
-      if (parsedUrl.pathname === '/api/auth/refresh') {
-        const result = await performPkceTokenRefresh();
-        res.writeHead(result.error ? 400 : 200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(result));
-        return;
-      }
-
-      // 4. /api/capture: capture screenshot of main window
-      if (parsedUrl.pathname === '/api/capture') {
-        if (mainWindow) {
-          const img = await mainWindow.webContents.capturePage();
-          const buf = img.toPNG();
-          res.writeHead(200, { 'Content-Type': 'image/png' });
-          res.end(buf);
-          return;
+        if (data.refresh_token) {
+          // Keychain may wait for macOS approval. Keep the new session usable in memory meanwhile.
+          void saveRefreshToken({ clientId: login.clientId, refreshToken: data.refresh_token }, version);
         }
-        res.writeHead(404);
-        res.end();
-        return;
+        finishSpotifyAuth(res, 'connected', login, { access_token: data.access_token, expires_in: data.expires_in || 3600 });
+      } catch {
+        if (login.version === sessionVersion) finishSpotifyAuth(res, 'unavailable', login);
+        else redirectSpotifyResult(res, 'expired', login);
       }
+    });
 
-      // 5. /api/click-playlist: toggle playlist/queue view
-      if (parsedUrl.pathname === '/api/click-playlist') {
-        if (mainWindow) {
-          try {
-            const clicked = await mainWindow.webContents.executeJavaScript(`
-              (() => {
-                const btn = document.querySelector('[data-testid="toggle-cover-btn"]') ||
-                            document.querySelector('[data-testid="toggle-playlist-btn"]') ||
-                            Array.from(document.querySelectorAll('button')).find(b => 
-                              b.textContent.includes('VIEW PLAYLIST') || 
-                              b.textContent.includes('COVER')
-                            );
-                if (btn) {
-                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                  btn.click();
-                  return true;
-                }
-                return false;
-              })()
-            `);
-            res.writeHead(200);
-            res.end(clicked ? 'toggled' : 'not_found');
-            return;
-          } catch (err) {
-            console.error('click-playlist error:', err);
-            res.writeHead(500);
-            res.end('error');
-            return;
-          }
-        }
-      }
-
-      // 6. /api/click-track: click a specific track in the playlist view
-      if (parsedUrl.pathname === '/api/click-track') {
-        const idx = parseInt(parsedUrl.searchParams.get('index') || '1', 10);
-        if (mainWindow) {
-          const resVal = await mainWindow.webContents.executeJavaScript(`
-            (() => {
-              const items = document.querySelectorAll('.divide-y > div');
-              if (items && items[${idx}]) {
-                items[${idx}].dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                items[${idx}].click();
-                return 'clicked_item_' + ${idx};
-              }
-              return 'not_found';
-            })()
-          `);
-          res.writeHead(200);
-          res.end(resVal);
-          return;
-        }
-      }
-
-      // 6. /api/close-modal: close any open modal
-      if (parsedUrl.pathname === '/api/close-modal') {
-        if (mainWindow) {
-          await mainWindow.webContents.executeJavaScript(`
-            const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent.trim() === 'CLOSE' || b.textContent.trim() === '✕');
-            if (btn) btn.click();
-          `);
-          res.writeHead(200);
-          res.end('closed');
-          return;
-        }
-      }
-
-      // /api/click-next: skip to next song
-      if (parsedUrl.pathname === '/api/click-next') {
-        if (mainWindow) {
-          try {
-            await mainWindow.webContents.executeJavaScript(`
-              (() => {
-                const btn = document.querySelector('button[title="Next Track"]');
-                if (btn) btn.click();
-              })()
-            `);
-            res.writeHead(200);
-            res.end('next clicked');
-            return;
-          } catch (e) {
-            console.error('[Next Error]', e);
-          }
-        }
-      }
-
-      // /api/click-prev: skip to previous song
-      if (parsedUrl.pathname === '/api/click-prev') {
-        if (mainWindow) {
-          try {
-            await mainWindow.webContents.executeJavaScript(`
-              (() => {
-                const btn = document.querySelector('button[title="Previous Track"]');
-                if (btn) btn.click();
-              })()
-            `);
-            res.writeHead(200);
-            res.end('prev clicked');
-            return;
-          } catch (e) {
-            console.error('[Prev Error]', e);
-          }
-        }
-      }
-
-      // /api/open-settings: open settings modal
-      if (parsedUrl.pathname === '/api/open-settings') {
-        if (mainWindow) {
-          try {
-            const result = await mainWindow.webContents.executeJavaScript(`
-              (() => {
-                const btn = document.querySelector('button[title="Menu / Settings"]') ||
-                            Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').trim().includes('MENU'));
-                if (btn) {
-                  btn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                  btn.click();
-                  return 'clicked';
-                }
-                return 'not found';
-              })()
-            `);
-            res.writeHead(200);
-            res.end(result || 'opened');
-            return;
-          } catch (e) {
-            console.error('[Open Settings Error]', e);
-            res.writeHead(500);
-            res.end(String(e));
-            return;
-          }
-        }
-      }
-
-      // /api/eval: execute JS in mainWindow and return result
-      if (parsedUrl.pathname === '/api/eval') {
-        const win = mainWindow || (BrowserWindow.getAllWindows && BrowserWindow.getAllWindows()[0]);
-        if (win) {
-          let body = '';
-          req.on('data', chunk => { body += chunk; });
-          req.on('end', async () => {
-            try {
-              const parsed = JSON.parse(body || '{}');
-              const evalResult = await win.webContents.executeJavaScript(parsed.code || '');
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ result: evalResult }));
-            } catch (err) {
-              res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: String(err) }));
-            }
-          });
-          return;
-        }
-      }
-
-      // /api/open-spotify: open spotify setup modal
-      if (parsedUrl.pathname === '/api/open-spotify') {
-        if (mainWindow) {
-          try {
-            await mainWindow.webContents.executeJavaScript(`
-              (() => {
-                const btn = Array.from(document.querySelectorAll('button')).find(b => (b.textContent || '').includes('SPOTIFY'));
-                if (btn) {
-                  btn.click();
-                  return 'clicked';
-                }
-                return 'not found';
-              })()
-            `);
-            res.writeHead(200);
-            res.end('opened');
-            return;
-          } catch (e) {
-            console.error('[Open Spotify Error]', e);
-          }
-        }
-      }
-
-      // 9. /api/click-play: click the main play/pause button
-      if (parsedUrl.pathname === '/api/click-play') {
-        if (mainWindow) {
-          const resVal = await mainWindow.webContents.executeJavaScript(`
-            (() => {
-              const playBtn = document.querySelector('[data-testid="main-play-btn"]') ||
-                              document.querySelector('button[title="Play"]') ||
-                              document.querySelector('button[title="Pause"]');
-              if (playBtn) {
-                playBtn.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
-                playBtn.click();
-                return 'clicked';
-              }
-              return 'not_found';
-            })()
-          `);
-          res.writeHead(200);
-          res.end(resVal);
-          return;
-        }
-      }
-
-      // 7. /api/test-spark: trigger click and capture spark
-      if (parsedUrl.pathname === '/api/test-spark') {
-        if (mainWindow) {
-          await mainWindow.webContents.executeJavaScript(`
-            window.dispatchEvent(new PointerEvent('pointerdown', { clientX: 360, clientY: 200, bubbles: true }));
-          `);
-          await new Promise(r => setTimeout(r, 60));
-          const img = await mainWindow.webContents.capturePage();
-          res.writeHead(200, { 'Content-Type': 'image/png' });
-          res.end(img.toPNG());
-          return;
-        }
-      }
-
-      // 4. /api/auth/session: Check if refresh token exists in Keychain
-      if (parsedUrl.pathname === '/api/auth/session') {
-        const hasSession = Boolean(await loadRefreshTokenSecurely());
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ hasSession }));
-        return;
-      }
-
-      // 5. /api/auth/logout: Wipe Keychain session
-      if (parsedUrl.pathname === '/api/auth/logout') {
-        clearRefreshTokenSecurely();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
-        return;
-      }
-
-      // 8. /api/spotify/wake & /api/spotify/launch-background: Launch Spotify app in background & minimize
-      if (parsedUrl.pathname === '/api/spotify/wake' || parsedUrl.pathname === '/api/spotify/launch-background') {
-        launchSpotifyInBackground((success) => {
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success }));
-        });
-        return;
-      }
-
-      // 10. /api/spotify/open-uri: Silent API stub (prevents popping up Spotify window)
-      if (parsedUrl.pathname === '/api/spotify/open-uri') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
-        return;
-      }
-
-      res.writeHead(404);
-      res.end('Not found');
-    } catch (err) {
-      res.writeHead(500);
-      res.end('Internal server error');
-    }
-  });
-
-  persistentAuthServer.listen(8888, '0.0.0.0', () => {
-    console.log('Persistent Spotify Auth server listening on http://127.0.0.1:8888');
-  });
-
-  persistentAuthServer.on('error', (err) => {
-    console.warn('Persistent auth server error:', err.message);
+    persistentAuthServer.once('error', (err) => {
+      console.warn('[Spotify] Could not start the loopback callback:', err.code);
+      resolve(false);
+    });
+    persistentAuthServer.listen(8888, '127.0.0.1', () => resolve(true));
   });
 }
 
+let authServerReady;
+
 function createWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
-  const { width: screenWidth, height: screenHeight } = primaryDisplay.workAreaSize;
+  const { width: screenWidth } = primaryDisplay.workAreaSize;
 
   mainWindow = new BrowserWindow({
     width: 720,
@@ -616,35 +316,39 @@ function createWindow() {
     minHeight: 240,
     x: Math.round(screenWidth - 740),
     y: 80,
+    show: !tray,
     frame: false,
     transparent: true,
     hasShadow: false,
     resizable: true,
-    alwaysOnTop: true,
+    alwaysOnTop: isAlwaysOnTop,
     backgroundColor: '#00000000',
     title: 'Pixeltunes - Pixel Music Player',
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: false,
+      sandbox: true,
     },
   });
 
   mainWindow.setAspectRatio(720 / 410);
 
-  if (process.platform === 'darwin') {
+  if (process.platform === 'darwin' && isAlwaysOnTop) {
     mainWindow.setAlwaysOnTop(true, 'floating', 1);
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   }
 
-  const fs = require('fs');
   const distHtmlPath = path.join(__dirname, '../dist/index.html');
-  const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+  const requestedDevUrl = URL.parse(process.env.VITE_DEV_SERVER_URL || '');
+  const devServerUrl = requestedDevUrl?.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(requestedDevUrl.hostname)
+    ? requestedDevUrl.origin : 'http://127.0.0.1:5173';
   const forceDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
 
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
-    if (validatedURL && (validatedURL.includes('localhost:5173') || validatedURL.includes('127.0.0.1:5173'))) {
+    if (URL.parse(validatedURL)?.origin === devServerUrl) {
       if (fs.existsSync(distHtmlPath)) {
         console.log('[Electron] Dev server not reachable, falling back to dist/index.html');
         mainWindow.loadFile(distHtmlPath);
@@ -678,11 +382,20 @@ function createWindow() {
     mainWindow.loadFile(distHtmlPath);
   }
 
+  mainWindow.webContents.on('will-navigate', (event) => event.preventDefault());
+  mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith('http:') || url.startsWith('https:')) {
-      shell.openExternal(url);
+    if (URL.parse(url)?.protocol === 'https:') {
+      shell.openExternal(url).catch(() => {});
     }
     return { action: 'deny' };
+  });
+
+  mainWindow.on('close', (event) => {
+    if (tray && !isQuitting) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
   });
 
   mainWindow.on('closed', () => {
@@ -690,18 +403,88 @@ function createWindow() {
   });
 }
 
-// IPC Handlers
-ipcMain.on('window:minimize', () => {
-  if (mainWindow) mainWindow.minimize();
+function showPlayer() {
+  if (!mainWindow) createWindow();
+  if (mainWindow.isMinimized()) mainWindow.restore();
+
+  const anchor = tray?.getBounds();
+  if (!mainWindow.isVisible() && anchor?.width > 0) {
+    const { workArea } = screen.getDisplayMatching(anchor);
+    const bounds = mainWindow.getBounds();
+    const fit = Math.min(1, workArea.width / bounds.width, workArea.height / bounds.height);
+    const width = Math.round(bounds.width * fit);
+    const height = Math.round(bounds.height * fit);
+    const x = Math.round(anchor.x + (anchor.width - width) / 2);
+    const y = Math.max(workArea.y, anchor.y + anchor.height) + 6;
+    mainWindow.setBounds({
+      x: Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width)),
+      y: Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - height)),
+      width,
+      height,
+    });
+  }
+
+  mainWindow.show();
+}
+
+function createMenuBar() {
+  tray = new Tray(path.join(__dirname, 'assets', 'PixelTunesTemplate.png'));
+  tray.setToolTip('PixelTunes');
+  tray.setIgnoreDoubleClickEvents(true);
+  tray.on('click', () => {
+    if (mainWindow?.isVisible()) mainWindow.hide();
+    else showPlayer();
+  });
+  tray.on('right-click', () => {
+    tray.popUpContextMenu(Menu.buildFromTemplate([
+      mainWindow?.isVisible()
+        ? { label: 'Hide Player', click: () => mainWindow?.hide() }
+        : { label: 'Show Player', click: showPlayer },
+      { label: 'Window Size', submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
+        label: `${label} (${width} × ${height})`,
+        type: 'radio',
+        checked: playerScale === id,
+        click: () => {
+          applyPlayerScale(id);
+          mainWindow.webContents.send('window:scale-changed', id);
+          showPlayer();
+        },
+      })) },
+      { label: 'Keep Player on Top', type: 'checkbox', checked: isAlwaysOnTop,
+        click: () => setAlwaysOnTop(!isAlwaysOnTop) },
+      { label: 'Open Spotify', click: () => { void openSpotify(); } },
+      { type: 'separator' },
+      { label: 'Quit PixelTunes', click: () => app.quit() },
+    ]));
+  });
+}
+
+// Accept IPC only from the main app document.
+function fromApp(event) {
+  return mainWindow && event.sender === mainWindow.webContents &&
+    event.senderFrame === mainWindow.webContents.mainFrame;
+}
+
+function handle(channel, handler) {
+  ipcMain.handle(channel, (event, ...args) => {
+    if (!fromApp(event)) throw new Error('Invalid IPC sender');
+    return handler(...args);
+  });
+}
+
+ipcMain.on('window:minimize', (event) => {
+  if (!fromApp(event)) return;
+  if (tray) mainWindow.hide();
+  else mainWindow.minimize();
 });
 
-ipcMain.on('window:close', () => {
-  if (mainWindow) mainWindow.close();
+ipcMain.on('window:close', (event) => {
+  if (fromApp(event)) mainWindow.close();
 });
 
-ipcMain.handle('window:toggle-always-on-top', () => {
+function setAlwaysOnTop(enabled) {
+  isAlwaysOnTop = enabled;
   if (!mainWindow) return isAlwaysOnTop;
-  isAlwaysOnTop = !isAlwaysOnTop;
   if (process.platform === 'darwin') {
     mainWindow.setAlwaysOnTop(isAlwaysOnTop, isAlwaysOnTop ? 'floating' : 'normal', 1);
     mainWindow.setVisibleOnAllWorkspaces(isAlwaysOnTop, { visibleOnFullScreen: true });
@@ -709,188 +492,123 @@ ipcMain.handle('window:toggle-always-on-top', () => {
     mainWindow.setAlwaysOnTop(isAlwaysOnTop);
   }
   return isAlwaysOnTop;
-});
+}
 
-ipcMain.handle('window:get-always-on-top', () => isAlwaysOnTop);
+handle('window:toggle-always-on-top', () => setAlwaysOnTop(!isAlwaysOnTop));
+handle('window:get-always-on-top', () => isAlwaysOnTop);
 
-ipcMain.on('window:set-size', (event, { width, height }) => {
-  if (!mainWindow) return;
-  const currentBounds = mainWindow.getBounds();
-  mainWindow.setBounds({
-    x: currentBounds.x,
-    y: currentBounds.y,
-    width: Math.max(400, Math.round(width)),
-    height: Math.max(280, Math.round(height)),
-  });
-});
-
-ipcMain.handle('window:get-size', () => {
-  if (!mainWindow) return { width: 720, height: 410 };
+function resizePlayer(width, height) {
   const bounds = mainWindow.getBounds();
-  return { width: bounds.width, height: bounds.height };
-});
-
-// PKCE Auth IPC Handlers (Secure Keychain Storage - No Client Secret)
-ipcMain.handle('auth:has-session', async () => {
-  return Boolean(await loadRefreshTokenSecurely());
-});
-
-ipcMain.handle('auth:login', () => {
-  shell.openExternal('http://127.0.0.1:8888/login');
-  return { success: true };
-});
-
-ipcMain.handle('auth:refresh', async () => {
-  return await performPkceTokenRefresh();
-});
-
-ipcMain.handle('auth:logout', () => {
-  clearRefreshTokenSecurely();
-  return true;
-});
-
-ipcMain.on('spotify:open-browser-login', () => {
-  shell.openExternal('http://127.0.0.1:8888/login');
-});
-
-ipcMain.handle('spotify:refresh-token', async () => {
-  const result = await performPkceTokenRefresh();
-  return result.access_token ? result : null;
-});
-
-ipcMain.handle('spotify:wake', async () => {
-  return new Promise((resolve) => {
-    launchSpotifyInBackground((success) => resolve(success));
+  const { workArea } = screen.getDisplayMatching(bounds);
+  const fit = Math.min(1, workArea.width / width, workArea.height / height);
+  const w = Math.round(width * fit);
+  const h = Math.round(height * fit);
+  mainWindow.setBounds({
+    x: Math.max(workArea.x, Math.min(bounds.x, workArea.x + workArea.width - w)),
+    y: Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - h)),
+    width: w,
+    height: h,
   });
+}
+
+function applyPlayerScale(scale) {
+  if (!Object.hasOwn(playerSizes, scale)) return;
+  if (!mainWindow) createWindow();
+  const { width, height } = playerSizes[scale];
+  playerScale = scale;
+  resizePlayer(width, height);
+}
+
+ipcMain.on('window:set-scale', (event, scale) => {
+  if (fromApp(event) && typeof scale === 'string') applyPlayerScale(scale);
 });
 
-ipcMain.handle('spotify:launch-background', async () => {
-  return new Promise((resolve) => {
-    launchSpotifyInBackground((success) => resolve(success));
-  });
+ipcMain.on('window:set-size', (event, dimensions) => {
+  if (!fromApp(event)) return;
+  const { width, height } = dimensions || {};
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return;
+  playerScale = null;
+  resizePlayer(Math.max(420, width), Math.max(240, height));
 });
 
-ipcMain.handle('spotify:open-uri', (event, uri) => {
-  // Silent no-op: Spotify stays minimized in Dock without popping up
-  return true;
-});
+handle('auth:has-session', async () => Boolean(await loadRefreshToken()));
 
-// Legacy in-app popup or start-auth handler
-ipcMain.handle('spotify:start-auth', async (event, { authUrl, usePopup = true }) => {
-  if (!usePopup) {
-    shell.openExternal('http://127.0.0.1:8888/login');
-    return { code: undefined };
+handle('auth:login', async (clientId, presentation) => {
+  if (!await authServerReady) return { success: false, error: 'Spotify callback port 8888 is unavailable.' };
+
+  if (clientId !== undefined && (typeof clientId !== 'string' || !/^[a-f0-9]{32}$/i.test(clientId))) {
+    return { success: false, error: 'Enter the 32-character Client ID from your Spotify Developer Dashboard.' };
   }
+  const selectedClientId = clientId || lastClientId;
+  const state = crypto.randomBytes(32).toString('base64url');
+  const verifier = crypto.randomBytes(64).toString('base64url');
+  const challenge = crypto.createHash('sha256').update(verifier).digest('base64url');
+  const theme = typeof presentation?.theme === 'string' && /^[a-z]{1,16}$/.test(presentation.theme) ? presentation.theme : null;
+  const login = {
+    state, verifier, clientId: selectedClientId, version: ++sessionVersion, expiresAt: Date.now() + 5 * 60_000,
+    theme, motion: presentation?.motion === 'off' ? 'off' : 'system',
+  };
+  pendingLogin = login;
 
-  return new Promise((resolve) => {
-    let popup = new BrowserWindow({
-      width: 540,
-      height: 740,
-      minWidth: 420,
-      minHeight: 500,
-      title: 'Spotify Login - Pixel Music Player',
-      frame: true,
-      resizable: true,
-      alwaysOnTop: true,
-      parent: mainWindow,
-      backgroundColor: '#120e29',
-      webPreferences: { nodeIntegration: false, contextIsolation: true },
-    });
+  const params = new URLSearchParams({
+    response_type: 'code',
+    client_id: selectedClientId,
+    scope: SPOTIFY_SCOPES.join(' '),
+    redirect_uri: SPOTIFY_REDIRECT_URI,
+    state,
+    code_challenge_method: 'S256',
+    code_challenge: challenge,
+  });
+  try {
+    await shell.openExternal(`https://accounts.spotify.com/authorize?${params}`);
+    return { success: true };
+  } catch {
+    if (pendingLogin === login) pendingLogin = null;
+    return { success: false, error: 'Could not open the browser for Spotify authorization.' };
+  }
+});
 
-    const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36';
-    popup.webContents.setUserAgent(userAgent);
+handle('auth:refresh', performPkceTokenRefresh);
+handle('auth:logout', () => {
+  clearSession();
+  return true;
+});
+handle('spotify:open', openSpotify);
+handle('spotify:launch-background', () => new Promise(launchSpotifyInBackground));
 
-    const checkCallback = (navUrl) => {
-      try {
-        const parsed = new URL(navUrl);
-        const isCallback = (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') &&
-                           (parsed.port === '8888' || parsed.pathname.includes('/callback'));
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (app.isReady()) showPlayer();
+  });
+  app.on('before-quit', () => { isQuitting = true; });
+  app.on('will-quit', () => {
+    tray?.destroy();
+    persistentAuthServer?.close();
+  });
+  app.on('window-all-closed', () => {
+    if (!isMac) app.quit();
+  });
 
-        if (isCallback && parsed.searchParams.has('code')) {
-          const code = parsed.searchParams.get('code');
-          if (popup) { popup.destroy(); popup = null; }
-          resolve({ code });
-          return true;
+  app.whenReady().then(() => {
+    try {
+      const configured = fs.readFileSync(getSpotifyClientIdPath(), 'utf8').trim();
+      if (/^[a-f0-9]{32}$/i.test(configured)) lastClientId = configured;
+    } catch {}
+    if (isMac) {
+      if (app.dock && fs.existsSync(appIconPath)) {
+        try {
+          app.dock.setIcon(appIconPath);
+        } catch (e) {
+          console.warn('[PixelTunes] Could not set dock icon:', e.message);
         }
-      } catch (e) {}
-      return false;
-    };
-
-    popup.webContents.on('will-redirect', (e, url) => { if (checkCallback(url)) e.preventDefault(); });
-    popup.webContents.on('will-navigate', (e, url) => { if (checkCallback(url)) e.preventDefault(); });
-    popup.webContents.on('did-navigate', (e, url) => { checkCallback(url); });
-    popup.on('closed', () => { popup = null; resolve({ error: 'Login window closed' }); });
-    popup.loadURL(authUrl);
-  });
-});
-
-ipcMain.handle('spotify:cancel-auth', () => true);
-
-// Temporary Pixel Cover Image Cache (Generated per song and deleted when song changes)
-const coverTempDir = path.join(os.tmpdir(), 'pixel-music-player-covers');
-
-function ensureCoverTempDir() {
-  if (!fs.existsSync(coverTempDir)) {
-    fs.mkdirSync(coverTempDir, { recursive: true });
-  }
-}
-
-function cleanAllTempCovers() {
-  try {
-    if (fs.existsSync(coverTempDir)) {
-      const files = fs.readdirSync(coverTempDir);
-      for (const file of files) {
-        try { fs.unlinkSync(path.join(coverTempDir, file)); } catch (err) {}
       }
-      console.log('Cleaned temporary pixel music covers directory');
+      createMenuBar();
+      app.setActivationPolicy('accessory');
     }
-  } catch (e) {
-    console.warn('Temp covers cleanup error:', e);
-  }
-}
-
-ipcMain.handle('cover:save-temp', async (event, { base64Data, trackKey }) => {
-  try {
-    ensureCoverTempDir();
-    const cleanKey = (trackKey || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 40);
-    const filePath = path.join(coverTempDir, `cover_${cleanKey}_${Date.now()}.png`);
-    const buffer = Buffer.from(base64Data.replace(/^data:image\/\w+;base64,/, ''), 'base64');
-    fs.writeFileSync(filePath, buffer);
-    return filePath;
-  } catch (e) {
-    console.error('Save temp cover error:', e);
-    return null;
-  }
-});
-
-ipcMain.handle('cover:delete-temp', async (event, filePath) => {
-  try {
-    if (filePath && fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-      console.log('Deleted previous pixel cover to free up space:', filePath);
-      return true;
-    }
-  } catch (e) {
-    console.warn('Delete temp cover error:', e);
-  }
-  return false;
-});
-
-app.whenReady().then(() => {
-  cleanAllTempCovers();
-  startPersistentAuthServer();
-  createWindow();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    authServerReady = startPersistentAuthServer();
+    createWindow();
+    app.on('activate', () => showPlayer());
   });
-});
-
-app.on('will-quit', () => {
-  cleanAllTempCovers();
-});
-
-app.on('window-all-closed', () => {
-  cleanAllTempCovers();
-  if (process.platform !== 'darwin') app.quit();
-});
+}

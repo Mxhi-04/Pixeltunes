@@ -40,26 +40,21 @@ export function getPixelCoverForTrack(trackTitle: string = '', artistName: strin
   const normTitle = (trackTitle || '').trim().toLowerCase();
   const normArtist = (artistName || '').trim().toLowerCase();
 
-  // If initial demo tracks without offset:
-  if (offset === 0) {
-    if (!normTitle || normTitle.includes('pastel clouds')) {
-      return PIXEL_COVERS[0]; // saturn_galaxy (the pink Saturn artwork with twinkling stars!)
+  let baseIndex: number;
+  if (!normTitle || normTitle === 'nothing playing' || normTitle.includes('pastel clouds')) {
+    baseIndex = 0;
+  } else if (normTitle.includes('fly me to the moon')) {
+    baseIndex = 1;
+  } else if (normTitle.includes('midnight orbit')) {
+    baseIndex = 2;
+  } else {
+    let hash = 0;
+    const seed = `${normTitle}__${normArtist}`;
+    for (let i = 0; i < seed.length; i++) {
+      hash = ((hash << 5) - hash + seed.charCodeAt(i)) | 0;
     }
-    if (normTitle.includes('fly me to the moon')) {
-      return PIXEL_COVERS[1]; // moon_bunny (iconic moon bunny!)
-    }
-    if (normTitle.includes('midnight orbit')) {
-      return PIXEL_COVERS[2]; // retro_synthwave
-    }
+    baseIndex = Math.abs(hash) % PIXEL_COVERS.length;
   }
 
-  let hash = 0;
-  const seed = `${normTitle}__${normArtist}`;
-  for (let i = 0; i < seed.length; i++) {
-    hash = (hash << 5) - hash + seed.charCodeAt(i);
-    hash |= 0;
-  }
-  const baseIndex = Math.abs(hash) % PIXEL_COVERS.length;
-  const finalIndex = (baseIndex + offset) % PIXEL_COVERS.length;
-  return PIXEL_COVERS[finalIndex];
+  return PIXEL_COVERS[(baseIndex + offset) % PIXEL_COVERS.length];
 }

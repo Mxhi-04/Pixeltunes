@@ -8,10 +8,13 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "electron": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:5173 && env -u ELECTRON_RUN_AS_NODE electron . --dev\"",
-    "app": "npm run build && env -u ELECTRON_RUN_AS_NODE electron .",
-    "start": "npm run app"
+    "electron": "node scripts/run-electron.mjs",
+    "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:127.0.0.1:5173 && npm run electron -- --dev\"",
+    "app": "npm run build && npm run electron",
+    "start": "npm run app",
+    "test": "npm run build && playwright test",
+    "package:mac": "npm run build && node scripts/package-desktop.mjs darwin",
+    "package:windows": "npm run build && node scripts/package-desktop.mjs win32"
   },
   "dependencies": {
     "canvas-confetti": "^1.9.4",
@@ -20,6 +23,8 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "@playwright/test": "^1.65.0",
     "@types/canvas-confetti": "^1.9.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
@@ -30,7 +35,13 @@
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
-    "vite": "^5.4.11",
+    "vite": "^6.4.5",
     "wait-on": "^9.5.1"
+  },
+  "overrides": {
+    "@electron/packager": {
+      "glob": "14.0.4",
+      "minimatch": "11.0.5"
+    }
   }
 }

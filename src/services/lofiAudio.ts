@@ -76,6 +76,9 @@ class LofiEngine {
   private stepInterval: number | null = null;
   private beatStep = 0;
   private volume = 0.8;
+  private repeat: 'off' | 'track' | 'context' = 'off';
+  private shuffle = false;
+  private order = BUILTIN_TRACKS.map((_, index) => index);
 
   private onStateChange: (() => void) | null = null;
 
@@ -92,7 +95,7 @@ class LofiEngine {
       this.analyser.fftSize = 64;
 
       this.masterGain = this.ctx.createGain();
-      this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(this.isPlaying ? this.volume : 0, this.ctx.currentTime);
 
       this.masterGain.connect(this.analyser);
       this.analyser.connect(this.ctx.destination);
@@ -103,7 +106,7 @@ class LofiEngine {
     }
   }
 
-  public setOnStateChange(callback: () => void) {
+  public setOnStateChange(callback: (() => void) | null) {
     this.onStateChange = callback;
   }
 
@@ -134,7 +137,7 @@ class LofiEngine {
   public setVolume(vol: number) {
     this.volume = Math.max(0, Math.min(1, vol));
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      this.masterGain.gain.setValueAtTime(this.isPlaying ? this.volume : 0, this.ctx.currentTime);
     }
     this.notify();
   }
@@ -147,7 +150,9 @@ class LofiEngine {
     this.initContext();
     if (this.isPlaying) return;
 
+    if (this.playbackPosition >= this.getDuration()) this.seek(0);
     this.isPlaying = true;
+    this.setVolume(this.volume);
     this.startSequencer();
     this.notify();
   }
@@ -156,7 +161,7 @@ class LofiEngine {
     if (!this.isPlaying) return;
     this.isPlaying = false;
     this.stopSequencer();
-    this.notify();
+    this.setVolume(this.volume);
   }
 
   public togglePlay() {
@@ -167,39 +172,54 @@ class LofiEngine {
     }
   }
 
-  public selectTrack(index: number) {
-    if (index >= 0 && index < BUILTIN_TRACKS.length) {
-      this.currentTrackIndex = index;
-      this.playbackPosition = 0;
-      this.beatStep = 0;
-      this.notify();
-      if (!this.isPlaying) {
-        this.play();
+  public setRepeat(mode: typeof this.repeat) {
+    this.repeat = mode;
+  }
+
+  public setShuffle(enabled: boolean) {
+    if (this.shuffle === enabled) return;
+    this.shuffle = enabled;
+    const order = BUILTIN_TRACKS.map((_, index) => index);
+    if (enabled) {
+      order.splice(this.currentTrackIndex, 1);
+      for (let i = order.length - 1; i > 0; i--) {
+        const other = Math.floor(Math.random() * (i + 1));
+        [order[i], order[other]] = [order[other], order[i]];
       }
+      order.unshift(this.currentTrackIndex);
     }
+    this.order = order;
+  }
+
+  private changeTrack(index: number) {
+    this.currentTrackIndex = index;
+    this.seek(0);
+    if (this.isPlaying) this.startSequencer();
+  }
+
+  public selectTrack(index: number) {
+    if (!BUILTIN_TRACKS[index]) return;
+    this.changeTrack(index);
+    this.play();
   }
 
   public nextTrack() {
-    this.currentTrackIndex = (this.currentTrackIndex + 1) % BUILTIN_TRACKS.length;
-    this.playbackPosition = 0;
-    this.beatStep = 0;
-    this.notify();
+    const position = this.order.indexOf(this.currentTrackIndex);
+    this.changeTrack(this.order[(position + 1) % this.order.length]);
   }
 
   public previousTrack() {
     if (this.playbackPosition > 3) {
-      this.playbackPosition = 0;
-      this.beatStep = 0;
-    } else {
-      this.currentTrackIndex = (this.currentTrackIndex - 1 + BUILTIN_TRACKS.length) % BUILTIN_TRACKS.length;
-      this.playbackPosition = 0;
-      this.beatStep = 0;
+      this.seek(0);
+      return;
     }
-    this.notify();
+    const position = this.order.indexOf(this.currentTrackIndex);
+    this.changeTrack(this.order[(position - 1 + this.order.length) % this.order.length]);
   }
 
   public seek(seconds: number) {
     this.playbackPosition = Math.max(0, Math.min(this.getDuration(), seconds));
+    this.beatStep = Math.floor(this.playbackPosition * this.getTrack().bpm / 30);
     this.notify();
   }
 
@@ -210,7 +230,7 @@ class LofiEngine {
 
     this.stepInterval = window.setInterval(() => {
       this.playBeatStep();
-      this.beatStep = (this.beatStep + 1) % 16;
+      this.beatStep++;
     }, stepDurationMs);
 
     // Track position timer
@@ -218,7 +238,12 @@ class LofiEngine {
       if (this.isPlaying) {
         this.playbackPosition += 1;
         if (this.playbackPosition >= this.getDuration()) {
-          this.nextTrack();
+          if (this.repeat === 'track') this.seek(0);
+          else if (this.repeat === 'context' || this.currentTrackIndex !== this.order[this.order.length - 1]) this.nextTrack();
+          else {
+            this.playbackPosition = this.getDuration();
+            this.pause();
+          }
         } else {
           this.notify();
         }

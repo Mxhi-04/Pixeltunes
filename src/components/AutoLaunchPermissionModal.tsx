@@ -5,7 +5,6 @@ import {
   markAutoLaunchPrompted,
   launchSpotifyInBackground,
 } from '../services/spotifyAutoLaunch';
-import { PixelSpotifyLogo } from './PixelSpotifyLogo';
 
 interface AutoLaunchPermissionModalProps {
   isOpen: boolean;
@@ -76,7 +75,7 @@ export const AutoLaunchPermissionModal: React.FC<AutoLaunchPermissionModalProps>
           <div className="flex items-start gap-3">
             {/* Pixelated Spotify Logo Icon */}
             <div className="w-10 h-10 shrink-0 bg-[#fffdf5] border-2 border-[#191244] flex items-center justify-center shadow-pixel-xs">
-              <PixelSpotifyLogo size={26} />
+              <img src="./spotify-logo.svg" alt="Spotify" className="w-[110px] h-auto" style={{ imageRendering: 'auto' }} />
             </div>
             <div className="space-y-1">
               <h3 className="text-[12px] font-bold text-[#191244] tracking-wide">

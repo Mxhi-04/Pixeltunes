@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { THEMES, RetroTheme } from '../types/theme';
-import { SCALES, PlayerScale } from '../types/scale';
+import { PLAYER_SCALES, SCALES, PlayerScale } from '../types/scale';
 import { playClickSound, setSoundEffectsEnabled } from '../services/soundEffects';
 import {
   isAutoLaunchEnabled,
@@ -17,6 +17,8 @@ interface SettingsModalProps {
   onArtModeSelect: (mode: 'pixelCovers' | 'pixelArt' | 'cassette') => void;
   crtEnabled: boolean;
   onToggleCrt: () => void;
+  motion: 'system' | 'on' | 'off';
+  onMotionChange: (motion: 'system' | 'on' | 'off') => void;
   soundEnabled: boolean;
   onToggleSound: (enabled: boolean) => void;
   windowTitle: string;
@@ -40,6 +42,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onArtModeSelect,
   crtEnabled,
   onToggleCrt,
+  motion,
+  onMotionChange,
   soundEnabled,
   onToggleSound,
   windowTitle,
@@ -75,16 +79,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }}
     >
       <div
-        className="w-[560px] max-w-[95%] max-h-[380px] flex flex-col min-h-0 bg-[#8fa2d4] border-4 border-[#191244] shadow-pixel-lg overflow-hidden app-no-drag"
-        style={{ WebkitAppRegion: 'no-drag' as any }}
+        className="w-[560px] max-w-[95%] max-h-[380px] flex flex-col min-h-0 border-4 shadow-pixel-lg overflow-hidden app-no-drag"
+        style={{ backgroundColor: currentTheme.windowBg, borderColor: currentTheme.primaryBorder, WebkitAppRegion: 'no-drag' as any }}
       >
         {/* Fixed Title Bar */}
         <div
-          className="bg-[#fec5db] border-b-4 border-[#191244] px-3 py-1.5 flex items-center justify-between shrink-0 app-no-drag"
-          style={{ WebkitAppRegion: 'no-drag' as any }}
+          className="border-b-4 px-3 py-1.5 flex items-center justify-between shrink-0 app-no-drag"
+          style={{ backgroundColor: currentTheme.titleBarBg, borderColor: currentTheme.primaryBorder, color: currentTheme.controlBtnText, WebkitAppRegion: 'no-drag' as any }}
         >
           <div className="flex items-center gap-1.5 app-no-drag">
-            <span className="font-pixel text-xs text-[#191244] tracking-wider font-bold">
+            <span className="font-pixel text-xs tracking-wider font-bold">
               SETTINGS.INI
             </span>
           </div>
@@ -122,21 +126,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="p-3 overflow-y-auto min-h-0 flex-1 space-y-3 text-[#191244] font-silkscreen text-xs">
+        <div className="p-3 overflow-y-auto min-h-0 flex-1 space-y-3 font-silkscreen text-xs" style={{ color: currentTheme.textColor }}>
           {/* Player Layout */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="font-pixel text-[10px]">
                 PLAYER LAYOUT:
               </label>
-              <span className="text-[10px] text-[#2c2269] font-bold">
-                {SCALES[scale]?.subLabel || 'Standard'}
+              <span className="text-[10px] font-bold">
+                {SCALES[scale].width} × {SCALES[scale].height}
               </span>
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {(Object.keys(SCALES) as PlayerScale[]).map((s) => (
+              {PLAYER_SCALES.map((s) => (
                 <button
                   key={s}
+                  aria-pressed={scale === s}
                   type="button"
                   onClick={() => {
                     playClickSound();
@@ -165,6 +170,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
+                aria-pressed={artMode === 'pixelCovers'}
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('pixelCovers');
@@ -179,6 +185,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={artMode === 'pixelArt'}
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('pixelArt');
@@ -193,6 +200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
               <button
                 type="button"
+                aria-pressed={artMode === 'cassette'}
                 onClick={() => {
                   playClickSound();
                   onArtModeSelect('cassette');
@@ -208,6 +216,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
+          {artMode === 'pixelArt' && (
+            <label className="flex items-center justify-between gap-2 bg-[#fffdf5] text-[#191244] p-2 border-2 border-[#191244]">
+              <span className="font-pixel text-[10px]">ART RESOLUTION</span>
+              <select title="Resolution of generated pixel art" value={pixelResolution} onChange={(event) => onPixelResolutionChange?.(Number(event.target.value))}>
+                {[48, 64, 96, 120, 180, 240].map((size) => <option key={size} value={size}>{size} px</option>)}
+              </select>
+            </label>
+          )}
+
           {/* Theme Palette */}
           <div>
             <label className="block font-pixel text-[10px] mb-1.5">
@@ -217,6 +234,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               {Object.values(THEMES).map((theme) => (
                 <button
                   key={theme.id}
+                  aria-pressed={currentTheme.id === theme.id}
                   onClick={() => {
                     playClickSound();
                     onThemeSelect(theme);
@@ -244,9 +262,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           {/* Toggle Options */}
-          <div className="space-y-2 pt-1">
+          <div className="space-y-2 pt-1 text-[#191244]">
+            <label className="flex items-center justify-between gap-2 bg-[#fffdf5] p-2 border-2 border-[#191244]">
+              <span className="font-pixel text-[10px]">ANIMATIONS</span>
+              <select value={motion} onChange={(event) => onMotionChange(event.target.value as typeof motion)}>
+                <option value="system">Follow system</option>
+                <option value="on">On</option>
+                <option value="off">Off</option>
+              </select>
+            </label>
             {/* Auto-Launch Spotify in Background */}
-            <div className="bg-[#fffdf5] p-2 border-2 border-[#191244]">
+            {window.electronAPI?.isElectron && <div className="bg-[#fffdf5] p-2 border-2 border-[#191244]">
               <div className="flex items-center justify-between mb-1.5">
                 <span className="font-pixel text-[10px] font-bold">AUTO-LAUNCH SPOTIFY APP:</span>
                 <span className={`font-pixel text-[8px] font-bold ${autoLaunchEnabled ? 'text-[#0d8253]' : 'text-[#888]'}`}>
@@ -289,7 +315,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <p className="font-pixel text-[7.5px] text-[#191244]/70 mt-1">
                 Opens Spotify in background &amp; minimizes it to prevent playback errors
               </p>
-            </div>
+            </div>}
 
             <label className="flex items-center justify-between bg-[#fffdf5] p-2 border-2 border-[#191244] cursor-pointer">
               <span className="font-pixel text-[10px]">8-BIT AUDIO FX:</span>
@@ -322,30 +348,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {/* Custom Labels */}
           <div className="grid grid-cols-2 gap-2 pt-1">
             <div>
-              <label className="block font-pixel text-[9px] mb-1">
+              <label htmlFor="window-title" className="block font-pixel text-[9px] mb-1">
                 WINDOW TITLE:
               </label>
               <input
                 type="text"
+                id="window-title"
                 value={windowTitle}
                 onChange={(e) => onWindowTitleChange(e.target.value)}
                 maxLength={24}
-                className="w-full px-2 py-1 bg-[#fffdf5] border-2 border-[#191244] text-[10px] font-pixel"
+                className="w-full px-2 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] text-[10px] font-pixel"
               />
             </div>
             <div>
-              <label className="block font-pixel text-[9px] mb-1">
+              <label htmlFor="title-emojis" className="block font-pixel text-[9px] mb-1">
                 TEXT EMOJIS:
               </label>
               <input
                 type="text"
+                id="title-emojis"
                 value={titleEmojis ?? headerTag ?? ''}
                 onChange={(e) => {
                   if (onTitleEmojisChange) onTitleEmojisChange(e.target.value);
                   if (onHeaderTagChange) onHeaderTagChange(e.target.value);
                 }}
                 maxLength={50}
-                className="w-full px-2 py-1 bg-[#fffdf5] border-2 border-[#191244] text-[11px] font-sans"
+                className="w-full px-2 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] text-[11px] font-sans"
               />
             </div>
           </div>

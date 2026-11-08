@@ -1,55 +1,39 @@
 import React, { useState, useEffect } from 'react';
-import { login as authLogin, getAccessToken } from '../services/spotify';
-import { playClickSound, playPlaySound } from '../services/soundEffects';
+import { login as authLogin } from '../services/spotify';
+import { playClickSound } from '../services/soundEffects';
 
 interface QuickConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
   needsScopeUpgrade?: boolean;
-  onConnected?: () => void;
+  authError?: string;
+  onRetry: () => void;
+  onOpenSetup: () => void;
 }
 
 export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
   isOpen,
   onClose,
   needsScopeUpgrade = false,
-  onConnected,
+  authError,
+  onRetry,
+  onOpenSetup,
 }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!isOpen || authError) {
       setIsConnecting(false);
       setStatusMsg(null);
     }
-  }, [isOpen]);
-
-  // Listen for Electron token update event while modal is open
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let unsubscribe: (() => void) | undefined;
-    if (window.electronAPI?.onAuthTokenUpdated) {
-      unsubscribe = window.electronAPI.onAuthTokenUpdated(() => {
-        setIsConnecting(false);
-        setStatusMsg('★ Connected successfully! Loading your Liked Songs...');
-        if (onConnected) onConnected();
-        setTimeout(() => {
-          onClose();
-        }, 600);
-      });
-    }
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [isOpen, onClose, onConnected]);
+  }, [isOpen, authError]);
 
   if (!isOpen) return null;
 
   const handleOneClickConnect = async () => {
     playClickSound();
+    onRetry();
     setIsConnecting(true);
     setStatusMsg('Opening Spotify in browser... Click "Agree" to link!');
 
@@ -127,27 +111,26 @@ export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
             <p className="font-silkscreen text-[8px] text-[#191244]/80 leading-relaxed max-w-[280px]">
               {needsScopeUpgrade
                 ? 'Your Spotify session needs 1-click update to unlock your Liked Songs and playlists without glitching.'
-                : 'Connect with 1-click to auto-load your Liked Songs playlist and enjoy glitch-free retro music.'}
+                : 'Connect your Spotify account to control playback on a Spotify device.'}
             </p>
           </div>
 
           {/* Status Message / Notification */}
-          {statusMsg && (
-            <div className="w-full bg-[#ffd269] border-2 border-[#191244] py-1 px-2 text-[7.5px] font-pixel text-[#191244] truncate animate-pulse">
-              {statusMsg}
+          {(statusMsg || authError) && (
+            <div role="status" className="w-full bg-[#ffd269] border-2 border-[#191244] py-1 px-2 text-[8px] font-pixel text-[#191244] leading-relaxed">
+              {authError || statusMsg}
             </div>
           )}
 
           {/* 1-Click Connect Button */}
           <button
             onClick={handleOneClickConnect}
-            disabled={isConnecting}
             className="w-full py-2.5 px-4 bg-[#9df0cf] hover:bg-[#8fa2d4] active:translate-y-0.5 text-[#191244] border-3 border-[#191244] shadow-pixel-sm font-pixel text-[9.5px] font-bold tracking-wider cursor-pointer transition-all flex items-center justify-center gap-2 group disabled:opacity-60"
           >
             {isConnecting ? (
               <>
                 <span className="animate-spin text-xs">↻</span>
-                <span>OPENING BROWSER...</span>
+                <span>REOPEN SPOTIFY AUTHORIZATION</span>
               </>
             ) : (
               <>
@@ -156,6 +139,10 @@ export const QuickConnectModal: React.FC<QuickConnectModalProps> = ({
                 <span className="text-xs group-hover:scale-125 transition-transform">✦</span>
               </>
             )}
+          </button>
+
+          <button onClick={onOpenSetup} className="font-silkscreen text-[8px] underline">
+            Spotify Setup
           </button>
 
           {/* Skip / Guest Link */}

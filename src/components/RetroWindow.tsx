@@ -5,9 +5,10 @@ import { PixelVisualizer } from './PixelVisualizer';
 import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
 import { PixelMenuButton } from './PixelMenuButton';
+import { getSpotifyItemUrl } from '../services/spotifyLinks';
 import { RetroTheme } from '../types/theme';
-import { SCALES, PlayerScale } from '../types/scale';
-import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
+import { PlayerScale } from '../types/scale';
+import { SpotifyPlaybackState } from '../types/spotify';
 import {
   playSpotify,
   pauseSpotify,
@@ -32,8 +33,9 @@ import {
 interface RetroWindowProps {
   theme: RetroTheme;
   artMode: 'pixelCovers' | 'pixelArt' | 'cassette' | 'saturn' | 'inspo';
-  onCycleArtMode: () => void;
   pixelResolution?: number;
+  reducedMotion: boolean;
+  crtEnabled: boolean;
   windowTitle: string;
   titleEmojis?: string;
   headerTag?: string;
@@ -41,12 +43,9 @@ interface RetroWindowProps {
   onScaleChange: (scale: PlayerScale) => void;
   isSpotifyConnected: boolean;
   spotifyPlayback: SpotifyPlaybackState | null;
-  initialLikedTrack?: any;
-  initialLikedList?: any[];
   onPollSpotify?: () => Promise<void>;
-  onOpenSpotifyModal: () => void;
-  onOpenSettingsModal: () => void;
-  onOpenPlaylistModal?: () => void;
+  onOpenSpotifyModal: (opener?: HTMLElement) => void;
+  onOpenSettingsModal: (opener: HTMLElement) => void;
   isModalOpen?: boolean;
 }
 
@@ -62,8 +61,9 @@ function getFormattedDigitalTime(): { time: string } {
 export const RetroWindow: React.FC<RetroWindowProps> = ({
   theme,
   artMode,
-  onCycleArtMode,
   pixelResolution = 180,
+  reducedMotion,
+  crtEnabled,
   windowTitle,
   titleEmojis = '𐙚 ⊹₊⋆☆',
   headerTag,
@@ -71,24 +71,16 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   onScaleChange,
   isSpotifyConnected,
   spotifyPlayback,
-  initialLikedTrack,
-  initialLikedList,
   onPollSpotify,
   onOpenSpotifyModal,
   onOpenSettingsModal,
-  onOpenPlaylistModal,
   isModalOpen = false,
 }) => {
-  const windowRef = useRef<HTMLDivElement | null>(null);
 
   // Local state for built-in audio fallback
   const [builtinTrack, setBuiltinTrack] = useState<BuiltinTrack>(lofiEngine.getTrack());
   const [builtinPlaying, setBuiltinPlaying] = useState(false);
   const [builtinPosition, setBuiltinPosition] = useState(0);
-  const [volume, setVolume] = useState(80); // 0 - 100
-  const [isMuted, setIsMuted] = useState(false);
-  const [isHoveringScrubber, setIsHoveringScrubber] = useState(false);
-  const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(true);
   const [showQueue, setShowQueue] = useState(false);
 
   const isMiniMode = scale === 'mini';
@@ -102,25 +94,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     }, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // Check initial Electron Always-on-top state
-  useEffect(() => {
-    if (window.electronAPI?.getAlwaysOnTop) {
-      window.electronAPI.getAlwaysOnTop().then((val) => {
-        setIsAlwaysOnTop(val);
-      });
-    }
-  }, []);
-
-  const handleToggleAlwaysOnTop = async () => {
-    playClickSound();
-    if (window.electronAPI?.toggleAlwaysOnTop) {
-      const newState = await window.electronAPI.toggleAlwaysOnTop();
-      setIsAlwaysOnTop(newState);
-    } else {
-      setIsAlwaysOnTop(!isAlwaysOnTop);
-    }
-  };
 
   const handleCloseWindow = () => {
     playClickSound();
@@ -144,22 +117,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     playClickSound();
     const nextScale: PlayerScale = scale === 'mini' ? 'standard' : 'mini';
     onScaleChange(nextScale);
-    const dims = SCALES[nextScale];
-    if (window.electronAPI?.setSize) {
-      window.electronAPI.setSize(dims.width, dims.height);
-    }
-  };
-
-  const cycleScale = () => {
-    playClickSound();
-    const scalesList: PlayerScale[] = ['standard', 'large', 'mini'];
-    const currentIndex = scalesList.indexOf(scale);
-    const nextScale = scalesList[(currentIndex + 1) % scalesList.length];
-    onScaleChange(nextScale);
-    const dims = SCALES[nextScale];
-    if (window.electronAPI?.setSize) {
-      window.electronAPI.setSize(dims.width, dims.height);
-    }
   };
 
   // Draggable Corner Resize Handle with aspect ratio lock
@@ -190,309 +147,175 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Sync with lofiEngine
+  const [builtinStarted, setBuiltinStarted] = useState(false);
+  const [builtinVolume, setBuiltinVolume] = useState(80);
+  const [localShuffle, setLocalShuffle] = useState(false);
+  const [localRepeat, setLocalRepeat] = useState<'off' | 'track' | 'context'>('off');
+  const localRestoreVolume = useRef(80);
+  const spotifyRestoreVolume = useRef(80);
+  const commandPending = useRef(false);
+  const [status, setStatus] = useState('');
+  const [seekDraft, setSeekDraft] = useState<number | null>(null);
+
   useEffect(() => {
     lofiEngine.setOnStateChange(() => {
       setBuiltinTrack(lofiEngine.getTrack());
       setBuiltinPlaying(lofiEngine.getIsPlaying());
       setBuiltinPosition(lofiEngine.getPosition());
     });
+    return () => lofiEngine.setOnStateChange(null);
   }, []);
 
-  // Optimistic playback state for instant zero-lag response
-  const [optimisticPlaying, setOptimisticPlaying] = useState<boolean | null>(null);
-
-  // User manually clicked/selected track with 5-second priority lock over stale poll responses
-  const [selectedTrack, setSelectedTrack] = useState<any>(null);
-  const [selectedTimestamp, setSelectedTimestamp] = useState<number>(0);
-
-  // Tracks whether user has started playback during this session (defaults to false so we don't show old songs)
-  const [hasSessionPlaybackStarted, setHasSessionPlaybackStarted] = useState<boolean>(false);
-
-  // When live Spotify playback is actively running, mark session playback started
   useEffect(() => {
-    if (spotifyPlayback?.is_playing) {
-      setHasSessionPlaybackStarted(true);
-      setOptimisticPlaying(null);
-    }
-  }, [spotifyPlayback?.is_playing]);
+    if (isSpotifyConnected) lofiEngine.pause();
+    setStatus('');
+  }, [isSpotifyConnected]);
 
-  // When authoritative Spotify track arrives matching selected track, clear selection lock
-  useEffect(() => {
-    if (spotifyPlayback?.item && selectedTrack) {
-      if (spotifyPlayback.item.id === selectedTrack.id || spotifyPlayback.item.name === selectedTrack.name) {
-        setSelectedTrack(null);
-        setOptimisticPlaying(null);
-      }
-    }
-  }, [spotifyPlayback?.item, selectedTrack]);
+  const activeSpotifyItem = isSpotifyConnected ? spotifyPlayback?.item : null;
+  const isPlaying = isSpotifyConnected ? Boolean(spotifyPlayback?.is_playing) : builtinPlaying;
+  const localTrack = !isSpotifyConnected && builtinStarted ? builtinTrack : null;
+  const currentTitle = activeSpotifyItem?.name ?? localTrack?.name ?? 'NOTHING PLAYING';
+  const currentArtist = activeSpotifyItem?.artists?.map((artist) => artist.name).join(', ') ||
+    activeSpotifyItem?.show?.name || localTrack?.artist ||
+    (isSpotifyConnected ? 'PRESS PLAY OR SELECT A SONG' : 'PRESS PLAY TO START');
+  const currentAlbum = activeSpotifyItem?.album?.name ?? localTrack?.album;
+  const albumArtUrl = activeSpotifyItem?.album?.images?.[0]?.url ?? activeSpotifyItem?.images?.[0]?.url;
+  const currentSpotifyUrl = activeSpotifyItem?.uri ? getSpotifyItemUrl(activeSpotifyItem.uri) : undefined;
+  const durationMs = activeSpotifyItem?.duration_ms ?? (localTrack ? localTrack.duration * 1000 : 0);
+  const progressMs = seekDraft ?? (isSpotifyConnected ? spotifyPlayback?.progress_ms ?? 0 : builtinPosition * 1000);
+  const shuffleState = isSpotifyConnected ? spotifyPlayback?.shuffle_state ?? false : localShuffle;
+  const repeatState = isSpotifyConnected ? spotifyPlayback?.repeat_state ?? 'off' : localRepeat;
+  const remoteVolume = spotifyPlayback?.device?.volume_percent;
+  const canSetVolume = !isSpotifyConnected || (
+    typeof remoteVolume === 'number' && !spotifyPlayback?.device?.is_restricted &&
+    spotifyPlayback?.device?.supports_volume !== false
+  );
+  const volume = isSpotifyConnected ? remoteVolume ?? 0 : builtinVolume;
+  const isMuted = canSetVolume && volume === 0;
+  const activeVolumeBlocks = Math.ceil(volume / 20);
 
-  // Determine active playback source:
-  // 1. User's recent selection (within 5s)
-  // 2. Authoritative live Spotify playback item (when playing or session started)
-  const isRecentSelection = Boolean(selectedTrack && Date.now() - selectedTimestamp < 5000);
-  const isSpotifyPlayingNow = Boolean(spotifyPlayback?.is_playing);
-
-  // A Spotify track is ONLY active if Spotify is actively playing right now, or the user actively selected/played a song in this session!
-  // If user opens Pixeltunes and Spotify is idle/paused from a previous session, activeSpotifyItem is null ("NOTHING PLAYING")
-  const activeSpotifyItem = isRecentSelection
-    ? selectedTrack
-    : (isSpotifyPlayingNow || hasSessionPlaybackStarted)
-    ? (spotifyPlayback?.item || selectedTrack || null)
-    : null;
-
-  const hasActiveSpotifyPlayback = isSpotifyConnected && activeSpotifyItem !== null && (isSpotifyPlayingNow || hasSessionPlaybackStarted);
-
-  const isPlaying = optimisticPlaying !== null
-    ? optimisticPlaying
-    : (isSpotifyConnected ? (hasActiveSpotifyPlayback && isSpotifyPlayingNow) : builtinPlaying);
-
-  const currentTitle = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.name || 'UNKNOWN TRACK'
-    : (isSpotifyConnected ? 'NOTHING PLAYING' : (builtinPlaying ? builtinTrack.name : 'NOTHING PLAYING'));
-
-  const currentArtist = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.artists?.map((a: any) => a.name).join(', ') || 'UNKNOWN ARTIST'
-    : (isSpotifyConnected ? 'PRESS PLAY OR SELECT A SONG' : (builtinPlaying ? builtinTrack.artist : 'PRESS PLAY TO START'));
-
-  const currentAlbum = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.album?.name || ''
-    : '';
-
-  const albumArtUrl = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.album?.images?.[0]?.url || null
-    : null;
-
-  const durationMs = hasActiveSpotifyPlayback
-    ? activeSpotifyItem?.duration_ms || 0
-    : (isSpotifyConnected ? 0 : (builtinPlaying ? builtinTrack.duration * 1000 : 0));
-
-  const progressMs = hasActiveSpotifyPlayback
-    ? (spotifyPlayback?.progress_ms || 0)
-    : (isSpotifyConnected ? 0 : (builtinPlaying ? builtinPosition * 1000 : 0));
-
-  const shuffleState = hasActiveSpotifyPlayback
-    ? (spotifyPlayback?.shuffle_state ?? false)
-    : false;
-
-  const repeatState = hasActiveSpotifyPlayback
-    ? (spotifyPlayback?.repeat_state ?? 'off')
-    : 'off';
-
-  // Format milliseconds into MM:SS
   const formatTime = (ms: number) => {
-    if (!ms || ms <= 0 || isNaN(ms)) return '00:00';
-    const totalSecs = Math.floor(ms / 1000);
-    const mins = Math.floor(totalSecs / 60);
-    const secs = totalSecs % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    const seconds = Math.max(0, Math.floor(ms / 1000));
+    return `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
   };
 
-  // Playback Controls Handlers (Zero-Lag Optimistic Execution)
-  const handleTogglePlay = async () => {
-    const nextPlaying = !isPlaying;
-    setOptimisticPlaying(nextPlaying);
-
-    if (nextPlaying) {
-      setHasSessionPlaybackStarted(true);
-      playPlaySound();
-    } else {
-      playPauseSound();
-    }
-
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      try {
-        if (nextPlaying) {
-          await playSpotify();
-        } else {
-          await pauseSpotify();
-        }
-        // Rapid re-poll to confirm authoritative server state
-        setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 200);
-        setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 600);
-        setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 1200);
-      } catch (err) {
-        console.error('Spotify play toggle failed:', err);
-        setOptimisticPlaying(null);
+  const runSpotifyCommand = async (command: () => Promise<boolean>) => {
+    if (commandPending.current) return;
+    commandPending.current = true;
+    setStatus('');
+    try {
+      if (!await command()) {
+        setStatus('Spotify could not complete this action. Check your Premium account and playback device.');
       }
-    } else {
-      if (nextPlaying) {
-        setHasSessionPlaybackStarted(true);
-      }
-      lofiEngine.togglePlay();
+      await onPollSpotify?.();
+    } finally {
+      commandPending.current = false;
     }
   };
 
-  const handleNext = async () => {
+  const handleTogglePlay = () => {
+    if (isPlaying) playPauseSound();
+    else playPlaySound();
+
+    if (isSpotifyConnected) {
+      return runSpotifyCommand(() => isPlaying ? pauseSpotify() : playSpotify());
+    }
+    setBuiltinStarted(true);
+    lofiEngine.togglePlay();
+  };
+
+  const handleNext = () => {
     playSkipSound();
-    setHasSessionPlaybackStarted(true);
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await nextTrackSpotify();
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 500);
-    } else {
-      lofiEngine.nextTrack();
-    }
+    if (isSpotifyConnected) return runSpotifyCommand(() => nextTrackSpotify());
+    setBuiltinStarted(true);
+    lofiEngine.nextTrack();
   };
 
-  const handlePrev = async () => {
+  const handlePrev = () => {
     playSkipSound();
-    setHasSessionPlaybackStarted(true);
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await previousTrackSpotify();
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 500);
-    } else {
-      lofiEngine.previousTrack();
-    }
+    if (isSpotifyConnected) return runSpotifyCommand(() => previousTrackSpotify());
+    setBuiltinStarted(true);
+    lofiEngine.previousTrack();
   };
 
-  const handleRewind = async () => {
-    playSkipSound();
-    const targetMs = Math.max(0, progressMs - 10000);
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await seekSpotify(targetMs);
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
-    } else {
-      lofiEngine.seek(targetMs / 1000);
-    }
-  };
-
-  const handleFastForward = async () => {
-    playSkipSound();
-    const targetMs = Math.min(durationMs, progressMs + 10000);
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await seekSpotify(targetMs);
-      setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 150);
-    } else {
-      lofiEngine.seek(targetMs / 1000);
-    }
-  };
-
-  const handleStop = async () => {
-    setOptimisticPlaying(false);
-    setHasSessionPlaybackStarted(false);
-    setSelectedTrack(null);
+  const handleStop = () => {
     playPauseSound();
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      try {
-        await pauseSpotify();
-        await seekSpotify(0);
-        setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 120);
-        setTimeout(() => { if (onPollSpotify) onPollSpotify(); }, 400);
-      } catch (err) {
-        setOptimisticPlaying(null);
-      }
+    if (isSpotifyConnected) {
+      if (isPlaying) return runSpotifyCommand(async () => await pauseSpotify() && await seekSpotify(0));
+      if (activeSpotifyItem) return runSpotifyCommand(() => seekSpotify(0));
+      return;
+    }
+    lofiEngine.pause();
+    lofiEngine.seek(0);
+    setBuiltinStarted(false);
+  };
+
+  const seekTo = async (positionMs: number) => {
+    if (!durationMs) return;
+    const target = Math.max(0, Math.min(durationMs, positionMs));
+    if (isSpotifyConnected) {
+      setSeekDraft(target);
+      await runSpotifyCommand(() => seekSpotify(target));
+      setSeekDraft(null);
     } else {
-      lofiEngine.pause();
-      lofiEngine.seek(0);
+      lofiEngine.seek(target / 1000);
+      setSeekDraft(null);
     }
   };
 
-  const handleSeek = async (e: React.MouseEvent<HTMLDivElement>) => {
-    playClickSound();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const ratio = Math.max(0, Math.min(1, clickX / rect.width));
-    const targetMs = ratio * durationMs;
-
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await seekSpotify(targetMs);
-    } else {
-      lofiEngine.seek(targetMs / 1000);
-    }
-  };
-
-  const handleVolumeChange = async (newVol: number) => {
+  const handleVolumeChange = (value: number) => {
     playBlipSound();
-    setVolume(newVol);
-    setIsMuted(newVol === 0);
-
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await setVolumeSpotify(newVol);
-    } else {
-      lofiEngine.setVolume(newVol / 100);
-    }
+    if (isSpotifyConnected) return runSpotifyCommand(() => setVolumeSpotify(value));
+    setBuiltinVolume(value);
+    lofiEngine.setVolume(value / 100);
   };
 
   const handleToggleMute = () => {
-    playBlipSound();
-    if (isMuted) {
-      setIsMuted(false);
-      handleVolumeChange(volume || 80);
-    } else {
-      setIsMuted(true);
-      if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-        setVolumeSpotify(0);
-      } else {
-        lofiEngine.setVolume(0);
-      }
-    }
+    if (!canSetVolume) return;
+    const restore = isSpotifyConnected ? spotifyRestoreVolume : localRestoreVolume;
+    if (volume > 0) restore.current = volume;
+    void handleVolumeChange(volume === 0 ? restore.current : 0);
   };
 
-  const activeVolumeBlocks = isMuted || volume === 0
-    ? 0
-    : Math.max(1, Math.min(5, Math.ceil(volume / 20)));
-
-  const handleSetVolumeBlock = (index: number) => {
-    playBlipSound();
-    const targetLevel = index + 1;
-    if (!isMuted && activeVolumeBlocks === 1 && targetLevel === 1) {
-      handleToggleMute();
-      return;
-    }
-    setIsMuted(false);
-    const newVol = targetLevel * 20;
-    handleVolumeChange(newVol);
-  };
-
-  const handleToggleShuffle = async () => {
+  const handleToggleShuffle = () => {
     playClickSound();
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      await toggleShuffleSpotify(!shuffleState);
-    }
+    if (isSpotifyConnected) return runSpotifyCommand(() => toggleShuffleSpotify(!shuffleState));
+    lofiEngine.setShuffle(!localShuffle);
+    setLocalShuffle(!localShuffle);
   };
 
-  const handleCycleRepeat = async () => {
+  const handleCycleRepeat = () => {
     playClickSound();
-    if (hasActiveSpotifyPlayback || isSpotifyConnected) {
-      const nextMode = repeatState === 'off' ? 'context' : repeatState === 'context' ? 'track' : 'off';
-      await setRepeatModeSpotify(nextMode);
-    }
+    const next = repeatState === 'off' ? 'context' : repeatState === 'context' ? 'track' : 'off';
+    if (isSpotifyConnected) return runSpotifyCommand(() => setRepeatModeSpotify(next));
+    lofiEngine.setRepeat(next);
+    setLocalRepeat(next);
   };
 
-  // Keyboard Shortcuts
+  const keyHandler = useRef<(event: KeyboardEvent) => void>(() => {});
+  keyHandler.current = (event) => {
+    if (isModalOpen || event.defaultPrevented || event.repeat || event.altKey || event.ctrlKey || event.metaKey) return;
+    const target = event.target;
+    if (target instanceof HTMLElement && target.closest('input, textarea, select, [contenteditable]')) return;
+    if (event.code === 'Space' && target instanceof HTMLElement && target.closest('button, a')) return;
+    switch (event.code) {
+      case 'Space': handleTogglePlay(); break;
+      case 'ArrowRight': handleNext(); break;
+      case 'ArrowLeft': handlePrev(); break;
+      case 'KeyM': handleToggleMute(); break;
+      case 'KeyS': onOpenSpotifyModal(); break;
+      default: return;
+    }
+    event.preventDefault();
+  };
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts if user is typing in an input
-      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) {
-        return;
-      }
-
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handleTogglePlay();
-      } else if (e.code === 'ArrowRight') {
-        e.preventDefault();
-        handleNext();
-      } else if (e.code === 'ArrowLeft') {
-        e.preventDefault();
-        handlePrev();
-      } else if (e.code === 'KeyM') {
-        e.preventDefault();
-        handleToggleMute();
-      } else if (e.code === 'KeyS') {
-        e.preventDefault();
-        onOpenSpotifyModal();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, hasActiveSpotifyPlayback, isSpotifyConnected, volume, isMuted]);
+    const keydown = (event: KeyboardEvent) => keyHandler.current(event);
+    window.addEventListener('keydown', keydown);
+    return () => window.removeEventListener('keydown', keydown);
+  }, []);
 
   // Calculate progress percent
-  const progressPercent = durationMs > 0 ? Math.min(100, (progressMs / durationMs) * 100) : 0;
+  const progressPercent = durationMs > 0 ? Math.max(0, Math.min(100, (progressMs / durationMs) * 100)) : 0;
 
   // Split title if it contains spaces to get the iconic stacked aesthetic from inspo
   const renderStackedTitle = (title: string) => {
@@ -500,8 +323,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     if (words.length <= 2) {
       return (
         <div className="font-pixel text-2xl font-bold tracking-wider leading-snug">
-          <div>{words[0]}</div>
-          {words[1] && <div>{words[1]}</div>}
+          <div className="truncate">{words[0]}</div>
+          {words[1] && <div className="truncate">{words[1]}</div>}
         </div>
       );
     }
@@ -521,14 +344,14 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   return (
     <div
-      ref={windowRef}
-      className="relative w-[720px] h-[410px] border-4 shadow-pixel-lg select-none flex flex-col overflow-hidden shrink-0"
+      className="relative isolate w-full h-full border-4 shadow-pixel-lg select-none flex flex-col overflow-hidden shrink-0"
       style={{
         borderColor: theme.primaryBorder,
         backgroundColor: theme.windowBg,
         boxShadow: `6px 6px 0px 0px ${theme.primaryBorder}`,
       }}
     >
+      {crtEnabled && <div aria-hidden="true" className="absolute inset-0 crt-overlay z-40 pointer-events-none" />}
       {/* Window Title Bar */}
       <div
         className={`h-10 px-3 py-2 flex items-center justify-between border-b-4 border-solid ${
@@ -542,9 +365,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         } as any}
       >
         {/* Candy Buttons & Window Title */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           {/* 3 Retro Glossy Candy Buttons - NO DRAG */}
-          <div className="flex items-center gap-1.5 mr-2 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
+          <div className="flex items-center gap-1.5 mr-2 shrink-0 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
             <button
               onClick={handleCloseWindow}
               title={window.electronAPI?.isElectron ? "Close Window" : "Stop"}
@@ -554,7 +377,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             </button>
             <button
               onClick={handleMinimizeWindow}
-              title={window.electronAPI?.isElectron ? "Minimize Window" : "Mini Mode"}
+              title={window.electronAPI?.isMenuBarApp ? "Hide to Menu Bar" : window.electronAPI?.isElectron ? "Minimize Window" : "Mini Mode"}
               className="w-3.5 h-3.5 rounded-full border-2 border-[#191244] bg-[#ffd269] relative overflow-hidden group cursor-pointer hover:scale-105 active:scale-95 transition-transform"
             >
               <div className="absolute top-0.5 left-0.5 w-1 h-1 bg-white rounded-full opacity-80" />
@@ -569,13 +392,13 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           </div>
 
           {/* Title and Text Emojis - DRAGGABLE */}
-          <div className="flex items-center gap-2 select-none pointer-events-none">
-            <span className="font-pixel text-xs font-bold tracking-widest text-[#191244]">
+          <div className="player-heading flex items-center gap-2 min-w-0 select-none pointer-events-none">
+            <span className="font-pixel text-xs font-bold tracking-widest text-[#191244] truncate">
               {windowTitle}
             </span>
             {titleEmojis && (
               <span
-                className="text-xs font-semibold tracking-wide leading-none inline-flex items-center text-[#191244]"
+                className="title-emojis max-w-[190px] truncate text-xs font-semibold tracking-wide leading-none text-[#191244]"
                 style={{
                   fontFamily: '"Apple Symbols", "Noto Sans Linear A", "Segoe UI Emoji", -apple-system, sans-serif',
                 }}
@@ -620,9 +443,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
             {/* Retro Pixel Menu Button */}
             <PixelMenuButton
-              onClick={() => {
+              onClick={(event) => {
                 playClickSound();
-                onOpenSettingsModal();
+                onOpenSettingsModal(event.currentTarget);
               }}
             />
           </div>
@@ -630,45 +453,38 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       </div>
 
       {/* Main Player Body: Permanent 2-Column Split (Layout NEVER Changes) */}
-      <div className="flex-1 min-h-0 flex flex-row items-center overflow-hidden w-full h-full">
+      <div className="player-body flex-1 min-h-0 flex items-center overflow-hidden w-full h-full">
         {/* Left Column: Playlist Screen OR Album Cover */}
         {showQueue ? (
           /* Full-Height Playlist Screen fitted directly to borders with NO space up and down */
-          <div className="w-[240px] h-full border-r-4 border-[#191244] bg-[#fffdf5] shrink-0 flex flex-col overflow-hidden">
+          <div className="player-library w-[240px] h-full border-r-4 border-[#191244] bg-[#fffdf5] shrink-0 flex flex-col overflow-hidden">
             <RetroQueueView
               isSpotifyConnected={isSpotifyConnected}
               onClose={() => setShowQueue(false)}
               onOpenSpotifyModal={onOpenSpotifyModal}
-              currentTrackTitle={hasActiveSpotifyPlayback ? currentTitle : undefined}
-              initialLikedTrack={hasActiveSpotifyPlayback ? activeSpotifyItem : null}
-              initialLikedList={initialLikedList}
-              onTrackPlayed={(playedTrack) => {
-                if (playedTrack) {
-                  setSelectedTrack(playedTrack);
-                  setSelectedTimestamp(Date.now());
-                  setHasSessionPlaybackStarted(true);
-                  setOptimisticPlaying(true);
-                }
-                if (onPollSpotify) {
-                  setTimeout(onPollSpotify, 400);
-                  setTimeout(onPollSpotify, 1000);
-                  setTimeout(onPollSpotify, 1800);
-                }
+              currentTrack={activeSpotifyItem}
+              onTrackPlayed={() => { void onPollSpotify?.(); }}
+              currentBuiltinId={localTrack?.id}
+              onBuiltinSelect={(index) => {
+                setBuiltinStarted(true);
+                lofiEngine.selectTrack(index);
               }}
             />
           </div>
         ) : (
           /* Album Cover View */
-          <div className="w-[240px] h-full flex flex-col items-center justify-center p-4 pr-1 shrink-0">
+          <div className="player-cover w-[240px] h-full flex flex-col items-center justify-center p-4 pr-1 shrink-0">
             {/* Pixel Card Container with Double Border */}
             <div
               className="w-[210px] h-[210px] border-4 p-1.5 bg-[#8fa2d4] shadow-pixel-sm shrink-0"
-              style={{ borderColor: theme.primaryBorder }}
+              style={{ borderColor: theme.primaryBorder, backgroundColor: theme.accentPeriwinkle }}
             >
               <div className="w-full h-full border-2 border-[#191244] relative group overflow-hidden">
                 <PixelCanvas
                   isPlaying={isPlaying}
+                  reducedMotion={reducedMotion}
                   albumArtUrl={albumArtUrl}
+                  albumArtLink={currentSpotifyUrl}
                   mode={artMode}
                   pixelResolution={pixelResolution}
                   trackTitle={currentTitle}
@@ -703,64 +519,64 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         )}
 
         {/* Right Column: Track Info & Controls (Always Right) */}
-        <div className="flex-1 min-w-0 p-4 pl-4 flex flex-col justify-center h-full">
+        <div className="player-controls flex-1 min-w-0 p-4 flex flex-col justify-center h-full">
           <div className="flex flex-col justify-between py-0.5 h-[245px]">
             {/* Song Title & Artist Display */}
             <div className="text-left space-y-0.5">
               <div
-                className="text-[#191244] uppercase select-text"
+                className="select-text" title={currentTitle}
                 style={{ color: theme.textColor }}
               >
                 {renderStackedTitle(currentTitle)}
               </div>
-              <div className="font-silkscreen text-xs text-[#191244]/90 font-bold tracking-wider truncate">
+              <div className="font-silkscreen text-xs font-bold tracking-wider truncate" title={currentArtist} style={{ color: theme.textColor }}>
                 {currentArtist}
               </div>
               {currentAlbum && (
-                <div className="font-silkscreen text-[10px] text-[#191244]/70 truncate">
+                <div className="font-silkscreen text-[10px] truncate" title={currentAlbum} style={{ color: theme.textColor }}>
                   {currentAlbum}
                 </div>
               )}
             </div>
 
+            <div className="sr-only" role="status" aria-live="polite">{status}</div>
+            {status && <p aria-hidden="true" className="text-[10px] font-bold" style={{ color: theme.textColor }}>{status}</p>}
+
             {/* Scrubber & Playback Controls Grouped Together (Shifted Upwards) */}
             <div className="space-y-1.5 -mt-1">
               {/* Retro Progress Bar & Scrubber */}
               <div className="space-y-0.5">
-                <div
-                  onClick={handleSeek}
-                  onMouseEnter={() => setIsHoveringScrubber(true)}
-                  onMouseLeave={() => setIsHoveringScrubber(false)}
-                  className="relative w-full h-4 flex items-center cursor-pointer group"
-                >
-                  {/* Background line (Dark Navy) */}
-                  <div
-                    className="w-full h-1 bg-[#191244] rounded-none relative"
-                    style={{ backgroundColor: theme.primaryBorder }}
-                  >
-                    {/* Filled progress */}
-                    <div
-                      className="h-full bg-[#fec5db]"
-                      style={{
-                        width: `${progressPercent}%`,
-                        backgroundColor: theme.accentPink,
-                      }}
-                    />
-                  </div>
-
-                  {/* Pixel Scrubber Block / Thumb */}
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 w-3.5 h-3.5 bg-[#fec5db] border-2 border-[#191244] shadow-pixel-sm transition-transform group-hover:scale-110"
-                    style={{
-                      left: `calc(${progressPercent}% - 7px)`,
-                      backgroundColor: theme.accentPink,
-                      borderColor: theme.primaryBorder,
-                    }}
-                  />
-                </div>
+                <input
+                  type="range"
+                  aria-label="Playback position"
+                  aria-valuetext={formatTime(progressMs)}
+                  className="pixel-scrubber"
+                  style={{ '--progress': `${progressPercent}%`, '--fill': theme.accentPink,
+                    '--edge': theme.primaryBorder } as React.CSSProperties}
+                  min={0}
+                  max={durationMs || 1}
+                  step={1}
+                  value={Math.min(progressMs, durationMs)}
+                  disabled={!durationMs}
+                  onChange={(event) => setSeekDraft(Number(event.target.value))}
+                  onPointerUp={(event) => { void seekTo(Number(event.currentTarget.value)); }}
+                  onPointerCancel={() => setSeekDraft(null)}
+                  onKeyUp={(event) => {
+                    if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) {
+                      void seekTo(Number(event.currentTarget.value));
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    const direction = ['ArrowRight', 'ArrowUp'].includes(event.key) ? 1
+                      : ['ArrowLeft', 'ArrowDown'].includes(event.key) ? -1 : 0;
+                    if (!direction) return;
+                    event.preventDefault();
+                    setSeekDraft((current) => Math.min(durationMs, Math.max(0, (current ?? progressMs) + direction * 5000)));
+                  }}
+                />
 
                 {/* Time Indicators */}
-                <div className="flex justify-between font-silkscreen text-[10px] text-[#191244] tracking-widest">
+                <div className="flex justify-between font-silkscreen text-[10px] tracking-widest" style={{ color: theme.textColor }}>
                   <span>{formatTime(progressMs)}</span>
                   <span>{formatTime(durationMs)}</span>
                 </div>
@@ -770,7 +586,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
               <div className="flex items-center justify-center gap-2.5 pt-0.5 pb-0.5 select-none">
                 {/* Rewind 10s (⏪) */}
                 <button
-                  onClick={handleRewind}
+                  onClick={() => { void seekTo(progressMs - 10000); }}
+                  disabled={!durationMs}
                   title="Rewind 10s"
                   className="px-1 py-1 hover:scale-110 active:scale-95 transition-transform cursor-pointer text-[#191244] outline-none focus:outline-none focus:ring-0"
                   style={{ color: theme.textColor }}
@@ -874,7 +691,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
                 {/* Fast Forward 10s (⏩) */}
                 <button
-                  onClick={handleFastForward}
+                  onClick={() => { void seekTo(progressMs + 10000); }}
+                  disabled={!durationMs}
                   title="Fast Forward 10s"
                   className="px-1 py-1 hover:scale-110 active:scale-95 transition-transform cursor-pointer text-[#191244] outline-none focus:outline-none focus:ring-0"
                   style={{ color: theme.textColor }}
@@ -905,6 +723,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                 <button
                   type="button"
                   onClick={handleToggleMute}
+                  disabled={!canSetVolume}
                   title={isMuted || volume === 0 ? "Unmute" : "Mute"}
                   className="hover:scale-105 active:scale-95 transition-transform cursor-pointer flex items-center justify-center p-0.5 outline-none focus:outline-none"
                 >
@@ -932,7 +751,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                       <button
                         key={idx}
                         type="button"
-                        onClick={() => handleSetVolumeBlock(idx)}
+                        onClick={() => { void handleVolumeChange((idx + 1) * 20); }}
+                        disabled={!canSetVolume}
+                        aria-pressed={volume === (idx + 1) * 20}
                         title={`Volume ${(idx + 1) * 20}%`}
                         className="w-[14px] h-[10px] rounded-[1.5px] transition-all cursor-pointer hover:brightness-105 active:scale-95 outline-none focus:outline-none"
                         style={{
@@ -953,7 +774,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                   className="font-silkscreen text-[9px] w-7 select-none"
                   style={{ color: theme.textColor }}
                 >
-                  {isMuted || volume === 0 ? '0%' : `${activeVolumeBlocks * 20}%`}
+                  {canSetVolume ? `${volume}%` : '—'}
                 </span>
 
                 <div className="ml-auto flex items-center gap-1.5">
@@ -961,6 +782,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                   <button
                     type="button"
                     onClick={handleToggleShuffle}
+                    aria-pressed={shuffleState}
                     title={`Shuffle: ${shuffleState ? 'ON' : 'OFF'}`}
                     className="w-[22px] h-[20px] rounded-[2px] border-2 flex items-center justify-center cursor-pointer transition-all active:translate-y-0.5 outline-none focus:outline-none"
                     style={{
@@ -1005,15 +827,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
                   {/* Spotify Quick Pill */}
                   <button
-                    onClick={() => {
+                    onClick={(event) => {
                       playClickSound();
-                      onOpenSpotifyModal();
+                      onOpenSpotifyModal(event.currentTarget);
                     }}
                     className="font-pixel text-[8px] px-2 h-[20px] bg-[#fffdf5] border-2 rounded-[2px] hover:bg-[#9df0cf] transition-all cursor-pointer whitespace-nowrap active:translate-y-0.5 flex items-center"
                     style={{
                       borderColor: theme.primaryBorder,
                       boxShadow: `1px 1px 0px ${theme.primaryBorder}`,
-                      color: theme.textColor,
+                      color: theme.controlBtnText,
                     }}
                   >
                     {isSpotifyConnected ? 'SPOTIFY' : '+ SPOTIFY'}
@@ -1023,11 +845,14 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
               {/* Pixel Equalizer Visualizer */}
               <div className="pt-0.5">
-                <PixelVisualizer
-                  isPlaying={isPlaying}
-                  isSpotifyActive={hasActiveSpotifyPlayback || false}
-                  barCount={18}
-                />
+                {isSpotifyConnected ? (
+                  <a href={currentSpotifyUrl || 'https://open.spotify.com'} target="_blank" rel="noopener noreferrer"
+                    aria-label={currentSpotifyUrl ? 'Open current track in Spotify' : 'Open Spotify'}
+                    className="inline-flex h-7 items-center px-2 bg-[#fffdf5] border" style={{ borderColor: theme.primaryBorder }}>
+                    <img src="./spotify-logo.svg" alt="" className="w-[110px] h-auto" style={{ imageRendering: 'auto' }} />
+                  </a>
+                ) : <PixelVisualizer isPlaying={isPlaying} reducedMotion={reducedMotion} barCount={18} />}
+
               </div>
             </div>
           </div>
@@ -1035,7 +860,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       </div>
 
       {/* Interactive Draggable Corner Resize Handle (Retro ◢ Grip) */}
-      <div
+      {window.electronAPI?.isElectron && <div
         onMouseDown={handleResizeMouseDown}
         title="Click and drag corner to resize player"
         className="absolute bottom-1 right-1 w-5 h-5 cursor-se-resize flex flex-col justify-end items-end p-0.5 opacity-60 hover:opacity-100 select-none z-20 group"
@@ -1045,7 +870,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           <div className="w-1 h-1 bg-[#191244] group-hover:bg-[#fec5db]" />
           <div className="w-1 h-1 bg-[#191244] group-hover:bg-[#fec5db]" />
         </div>
-      </div>
+      </div>}
     </div>
   );
 };

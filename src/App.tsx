@@ -1,387 +1,328 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { RetroWindow } from './components/RetroWindow';
 import { SpotifyModal } from './components/SpotifyModal';
 import { SettingsModal } from './components/SettingsModal';
 import { QuickConnectModal } from './components/QuickConnectModal';
 import { AutoLaunchPermissionModal } from './components/AutoLaunchPermissionModal';
-import { THEMES, RetroTheme } from './types/theme';
-import { SCALES, PlayerScale } from './types/scale';
+import { PlayerDialog } from './components/PlayerDialog';
+import { THEMES } from './types/theme';
+import { PLAYER_SCALES, SCALES, PlayerScale } from './types/scale';
 import { SpotifyPlaybackState } from './types/spotify';
-import { lofiEngine } from './services/lofiAudio';
 import {
-  getAccessToken,
   getPlaybackState,
   getStoredUserName,
   clearSpotifyAuth,
   validateSpotifyToken,
-  startSpotifyAutoRefreshLoop,
   onSessionRevoked,
-  setStoredUserName,
-  getLikedSongs,
   handleWebAuthCallback,
 } from './services/spotify';
 import {
   hasPromptedAutoLaunch,
   isAutoLaunchEnabled,
   launchSpotifyInBackground,
+  markAutoLaunchPrompted,
 } from './services/spotifyAutoLaunch';
-import { isSoundEffectsEnabled, setSoundEffectsEnabled, playClickSound } from './services/soundEffects';
+import { isSoundEffectsEnabled, playClickSound } from './services/soundEffects';
 
 const BASE_WIDTH = 720;
 const BASE_HEIGHT = 410;
+type ArtMode = 'pixelCovers' | 'pixelArt' | 'cassette';
+type MotionMode = 'system' | 'on' | 'off';
+const labels = { connect: 'Connect Spotify', autoLaunch: 'Spotify background launch', spotify: 'Spotify', settings: 'Settings' };
+type Modal = keyof typeof labels;
 
-const DEFAULT_TITLE_EMOJIS = '𐙚 ⊹₊⋆☆';
-const DEFAULT_WINDOW_TITLE = 'PIXELTUNES';
-
-export const App: React.FC = () => {
-  // Theme & Aesthetic State
-  const [currentTheme, setCurrentTheme] = useState<RetroTheme>(THEMES.inspo);
-  const [artMode, setArtMode] = useState<'pixelCovers' | 'pixelArt' | 'cassette'>('pixelCovers');
-  const [pixelResolution, setPixelResolution] = useState<number>(180);
-  const [scale, setScale] = useState<PlayerScale>('standard');
-  const [crtEnabled, setCrtEnabled] = useState(true);
-  const [soundEnabled, setSoundEnabled] = useState(isSoundEffectsEnabled());
-  const [windowTitle, setWindowTitle] = useState(() => {
-    return localStorage.getItem('pixeltunes_window_title') || DEFAULT_WINDOW_TITLE;
+function usePreference<T extends string>(key: string, fallback: T, allowed?: readonly T[]) {
+  const storageKey = `pixeltunes_${key}`;
+  const [value, setValue] = useState<T>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey) as T | null;
+      return stored !== null && (!allowed || allowed.includes(stored)) ? stored : fallback;
+    } catch {
+      return fallback;
+    }
   });
-  const [titleEmojis, setTitleEmojis] = useState(() => {
-    return localStorage.getItem('pixeltunes_title_emojis') || DEFAULT_TITLE_EMOJIS;
-  });
+  useEffect(() => {
+    try { localStorage.setItem(storageKey, value); } catch {}
+  }, [storageKey, value]);
+  return [value, setValue] as const;
+}
 
-  const handleWindowTitleChange = (newTitle: string) => {
-    setWindowTitle(newTitle);
-    localStorage.setItem('pixeltunes_window_title', newTitle);
+export function App() {
+  const isElectron = Boolean(window.electronAPI?.isElectron);
+  const [themeId, setThemeId] = usePreference('theme', 'inspo', Object.keys(THEMES));
+  const theme = THEMES[themeId];
+  const [artMode, setArtMode] = usePreference<ArtMode>('art_mode', 'pixelCovers', ['pixelCovers', 'pixelArt', 'cassette']);
+  const [pixelResolution, setPixelResolution] = usePreference<string>('pixel_resolution', '180', ['48', '64', '96', '120', '180', '240']);
+  const [scale, setScale] = usePreference<PlayerScale>('scale', 'standard', PLAYER_SCALES);
+  const [crt, setCrt] = usePreference('crt', 'on', ['on', 'off']);
+  const [motion, setMotion] = usePreference<MotionMode>('motion', 'system', ['system', 'on', 'off']);
+  const [windowTitle, setWindowTitle] = usePreference<string>('window_title', 'PIXELTUNES');
+  const [titleEmojis, setTitleEmojis] = usePreference<string>('title_emojis', '𐙚 ⊹₊⋆☆');
+  const [soundEnabled, setSoundEnabled] = useState(isSoundEffectsEnabled);
+  const [systemReduced, setSystemReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const reducedMotion = motion === 'off' || (motion === 'system' && systemReduced);
+
+  const [modal, setModal] = useState<Modal | null>(null);
+  const modalOpener = useRef<HTMLElement | null>(null);
+  const openModal = (next: Modal, opener?: HTMLElement) => {
+    modalOpener.current = opener ?? null;
+    setModal(next);
   };
-
-  const handleTitleEmojisChange = (newEmojis: string) => {
-    setTitleEmojis(newEmojis);
-    localStorage.setItem('pixeltunes_title_emojis', newEmojis);
-  };
-
-  // Spotify State
   const [isSpotifyConnected, setIsSpotifyConnected] = useState(false);
   const [spotifyPlayback, setSpotifyPlayback] = useState<SpotifyPlaybackState | null>(null);
-  const [userName, setUserName] = useState('RABGON');
-  const [showQuickConnect, setShowQuickConnect] = useState(false);
+  const [userName, setUserName] = useState('SPOTIFY USER');
+  const [authError, setAuthError] = useState('');
+  const [authForbidden, setAuthForbidden] = useState(false);
   const [needsScopeUpgrade, setNeedsScopeUpgrade] = useState(false);
-  const [initialLikedTrack, setInitialLikedTrack] = useState<any>(null);
-  const [initialLikedList, setInitialLikedList] = useState<any[]>([]);
+  const session = useRef(0);
+  const resetAuthError = () => {
+    session.current++;
+    setAuthError('');
+    setAuthForbidden(false);
+  };
+  const pendingPoll = useRef<Promise<void> | null>(null);
 
-  // Modals
-  const [isSpotifyModalOpen, setIsSpotifyModalOpen] = useState(false);
-  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [showAutoLaunchModal, setShowAutoLaunchModal] = useState(false);
+  const closeModal = () => {
+    if (modal === 'autoLaunch') markAutoLaunchPrompted();
+    modalOpener.current = null;
+    setModal(null);
+  };
 
-  // Show auto-launch permission prompt ONLY when opening PixelTunes for the VERY FIRST TIME
-  useEffect(() => {
-    if (!hasPromptedAutoLaunch()) {
-      setShowAutoLaunchModal(true);
-    }
+  const connect = useCallback((name: string) => {
+    setIsSpotifyConnected(true);
+    setUserName(name);
+    setNeedsScopeUpgrade(false);
+    setAuthError('');
+    setAuthForbidden(false);
+    if (isAutoLaunchEnabled()) void launchSpotifyInBackground();
   }, []);
 
-  // Preload user's liked songs for the playlist drawer without forcing any track to play/show on startup
-  const preloadLikedSongsList = useCallback(async () => {
-    try {
-      const list = await getLikedSongs(50);
-      if (list && list.length > 0) {
-        setInitialLikedList(list);
+  useEffect(() => {
+    let cancelled = false;
+    let startupTimer: number | undefined;
+    const checkAuth = async (interactive = false) => {
+      const version = ++session.current;
+      if (isElectron && !interactive) {
+        startupTimer = window.setTimeout(() => {
+          if (cancelled || version !== session.current) return;
+          setAuthError('Still checking your saved session. If macOS asks for Keychain access, respond there or connect again.');
+          setModal((current) => current ?? 'connect');
+        }, 7000);
       }
-    } catch (e) {
-      console.error('Failed to preload liked songs list:', e);
-    }
-  }, []);
-
-  // Window Dimensions for Responsive Proportional Scaling (Layout NEVER changes!)
-  const [windowDimensions, setWindowDimensions] = useState({
-    width: typeof window !== 'undefined' ? window.innerWidth : BASE_WIDTH,
-    height: typeof window !== 'undefined' ? window.innerHeight : BASE_HEIGHT,
-  });
-
-  useEffect(() => {
-    const handleResize = () => {
-      setWindowDimensions({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    };
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  // Compute uniform zoom scale factor so layout never reflows
-  const zoomScale = Math.max(
-    0.35,
-    Math.min(windowDimensions.width / BASE_WIDTH, windowDimensions.height / BASE_HEIGHT)
-  );
-
-  // Validate session on mount & subscribe to token updates
-  useEffect(() => {
-    const checkInitialAuth = async () => {
-      // 0. Check if web browser returned from Spotify PKCE redirect
-      await handleWebAuthCallback().catch(() => {});
-
-      // 1. Initial check: If user has a valid Keychain session with all scopes, connect & fetch liked songs list
-      const { valid, user, needsScopeUpgrade: upgradeRequired } = await validateSpotifyToken();
-      if (valid && user && !upgradeRequired) {
-        setIsSpotifyConnected(true);
-        setUserName(user);
-        setShowQuickConnect(false);
-        setNeedsScopeUpgrade(false);
-        // Clear any old stored track so we start fresh with nothing playing
-        try {
-          localStorage.removeItem('pixeltunes_last_spotify_track');
-        } catch {}
-        preloadLikedSongsList();
-
-        // If background auto-launch enabled, keep Spotify running in background
-        if (isAutoLaunchEnabled()) {
-          launchSpotifyInBackground().catch(() => {});
+      let callbackError = '';
+      try {
+        if (!interactive) await handleWebAuthCallback();
+      } catch (error) {
+        callbackError = error instanceof Error ? error.message : 'Spotify authorization failed.';
+      }
+      if (cancelled || version !== session.current) return;
+      const { valid, user, needsScopeUpgrade: upgrade, forbidden, error } = await validateSpotifyToken(interactive);
+      clearTimeout(startupTimer);
+      if (cancelled || version !== session.current) return;
+      if (valid && user) {
+        connect(user);
+        if (isElectron && !hasPromptedAutoLaunch()) {
+          setModal((current) => interactive || !current || current === 'connect' ? 'autoLaunch' : current);
+        } else {
+          setModal((current) => interactive || current === 'connect' ? null : current);
+        }
+        if (interactive) {
+          if (document.querySelector('[data-motion="on"]')) {
+            void confetti({ particleCount: 80, spread: 60, disableForReducedMotion: false });
+          }
         }
       } else {
-        setIsSpotifyConnected(false);
-        setNeedsScopeUpgrade(Boolean(upgradeRequired));
-        // Prompt to connect in 1-click on open!
-        setShowQuickConnect(true);
+        setNeedsScopeUpgrade(Boolean(upgrade));
+        setAuthError(error || callbackError || (interactive ? 'Spotify could not complete the connection.' : ''));
+        setAuthForbidden(Boolean(forbidden));
+        setModal((current) => current ?? 'connect');
       }
     };
-
-    checkInitialAuth();
-
-    // 2. Subscribe to Electron PKCE auth callback (zero reload, instant seamless sync)
-    let unsubscribeUpdated: (() => void) | undefined;
-    if (window.electronAPI?.onAuthTokenUpdated) {
-      unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated(async (payload) => {
-        setIsSpotifyConnected(true);
-        setShowQuickConnect(false);
-        setNeedsScopeUpgrade(false);
-        const name = (payload.user_name || 'SPOTIFY USER').toUpperCase();
-        setUserName(name);
-        setStoredUserName(name);
-        confetti({
-          particleCount: 80,
-          spread: 60,
-          origin: { y: 0.6 },
-          colors: ['#fec5db', '#8fa2d4', '#9df0cf', '#ffd269'],
-        });
-
-        try {
-          localStorage.removeItem('pixeltunes_last_spotify_track');
-        } catch {}
-        preloadLikedSongsList();
-
-        // If background auto-launch enabled, keep Spotify running in background
-        if (isAutoLaunchEnabled()) {
-          launchSpotifyInBackground().catch(() => {});
-        }
-      });
-    }
-
-    // 3. Subscribe to invalid_grant revocation (shows non-blocking reconnect button)
+    const unsubscribe = window.electronAPI?.onAuthTokenUpdated?.((result) => {
+      if (result.error) {
+        session.current++;
+        setAuthError(result.error);
+        setAuthForbidden(Boolean(result.forbidden));
+        setModal((current) => current ?? 'connect');
+      } else if (result.access_token) {
+        void checkAuth(true);
+      }
+    });
     const unsubscribeRevoked = onSessionRevoked(() => {
+      session.current++;
       setIsSpotifyConnected(false);
       setSpotifyPlayback(null);
-      setShowQuickConnect(true);
+      setAuthError('Your Spotify session expired. Connect again to resume control.');
+      setModal((current) => current ?? 'connect');
     });
-
+    void checkAuth();
     return () => {
-      if (unsubscribeUpdated) unsubscribeUpdated();
+      cancelled = true;
+      clearTimeout(startupTimer);
+      unsubscribe?.();
       unsubscribeRevoked();
     };
-  }, [preloadLikedSongsList]);
+  }, [connect, isElectron]);
 
-  // Poll Spotify Playback State
-  const pollSpotify = useCallback(async () => {
-    if (!isSpotifyConnected) return;
-    const token = await getAccessToken();
-    if (!token) {
-      setIsSpotifyConnected(false);
-      return;
-    }
-
-    const state = await getPlaybackState();
-    setSpotifyPlayback(state);
+  const pollSpotify = useCallback(() => {
+    if (!isSpotifyConnected) return Promise.resolve();
+    if (pendingPoll.current) return pendingPoll.current;
+    const version = session.current;
+    const request = getPlaybackState().then((state) => {
+      if (version === session.current) setSpotifyPlayback(state);
+    }).catch(() => {
+      // Keep the last confirmed state during a temporary network failure or rate limit.
+    }).finally(() => {
+      if (pendingPoll.current === request) pendingPoll.current = null;
+    });
+    pendingPoll.current = request;
+    return request;
   }, [isSpotifyConnected]);
 
   useEffect(() => {
     if (!isSpotifyConnected) return;
-
-    pollSpotify();
-    const interval = setInterval(pollSpotify, 1200);
-    return () => clearInterval(interval);
+    void pollSpotify();
+    const interval = window.setInterval(() => {
+      if (!document.hidden) void pollSpotify();
+    }, 1800);
+    const onVisible = () => { if (!document.hidden) void pollSpotify(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisible);
+      pendingPoll.current = null;
+    };
   }, [isSpotifyConnected, pollSpotify]);
 
-  // Dedicated background auto-refresh loop (zero disruption to playback)
-  useEffect(() => {
-    if (!isSpotifyConnected) return;
-    const cleanup = startSpotifyAutoRefreshLoop();
-    return cleanup;
-  }, [isSpotifyConnected]);
+  const disconnect = async () => {
+    session.current++;
+    setIsSpotifyConnected(false);
+    setSpotifyPlayback(null);
+    try {
+      await clearSpotifyAuth();
+    } catch {
+      setAuthError('Could not clear the saved Spotify session.');
+    }
+  };
 
-  // Global Soft Minimalistic Click Sound & Visual Click Sparks (from reference image)
+  const [dimensions, setDimensions] = useState(() => ({ width: innerWidth, height: innerHeight }));
+  useEffect(() => {
+    const resize = () => setDimensions({ width: innerWidth, height: innerHeight });
+    const preference = matchMedia('(prefers-reduced-motion: reduce)');
+    const changeMotion = (event: MediaQueryListEvent) => setSystemReduced(event.matches);
+    window.addEventListener('resize', resize);
+    preference.addEventListener('change', changeMotion);
+    return () => {
+      window.removeEventListener('resize', resize);
+      preference.removeEventListener('change', changeMotion);
+    };
+  }, []);
+
+  useEffect(() => {
+    window.electronAPI?.setScale(scale);
+  }, [scale]);
+  useEffect(() => window.electronAPI?.onScaleChanged(setScale), [setScale]);
+
+  const portrait = !isElectron && dimensions.width <= 560 && dimensions.height > dimensions.width;
+  const frameWidth = portrait ? 420 : BASE_WIDTH;
+  const frameHeight = portrait ? 630 : BASE_HEIGHT;
+  const fit = Math.min(dimensions.width / frameWidth, dimensions.height / frameHeight);
+  const zoomScale = portrait ? fit * { tiny: 0.72, mini: 0.82, standard: 0.92, large: 0.97, xl: 1 }[scale]
+    : Math.min(fit, isElectron ? Infinity : SCALES[scale].width / BASE_WIDTH);
   const [clickSparks, setClickSparks] = useState<Array<{ id: number; x: number; y: number }>>([]);
 
   useEffect(() => {
-    const handleGlobalPointerDown = (e: MouseEvent) => {
-      // Soft minimalistic tactile click
+    const pointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
       playClickSound();
-
-      // Spawn pixel click spark effect at mouse coordinates
-      const newSpark = { id: Date.now() + Math.random(), x: e.clientX, y: e.clientY };
-      setClickSparks((prev) => [...prev.slice(-6), newSpark]);
-
-      setTimeout(() => {
-        setClickSparks((prev) => prev.filter((s) => s.id !== newSpark.id));
-      }, 260);
+      if (!reducedMotion) {
+        setClickSparks((previous) => [...previous.slice(-6), {
+          id: Date.now() + Math.random(), x: event.clientX, y: event.clientY,
+        }]);
+      }
     };
-
-    window.addEventListener('pointerdown', handleGlobalPointerDown);
-    return () => window.removeEventListener('pointerdown', handleGlobalPointerDown);
-  }, []);
-
-  // Cycle Art Mode Helper
-  const handleCycleArtMode = () => {
-    setArtMode((prev) => {
-      if (prev === 'pixelCovers' || (prev as any) === 'inspo' || (prev as any) === 'saturn') return 'pixelArt';
-      if (prev === 'pixelArt') return 'cassette';
-      return 'pixelCovers';
-    });
-  };
-
-  const handleLoginSuccess = async () => {
-    setIsSpotifyConnected(true);
-    setShowQuickConnect(false);
-    setNeedsScopeUpgrade(false);
-    const name = getStoredUserName();
-    setUserName(name);
-    pollSpotify();
-    await preloadLikedSongsList();
-
-    // If background auto-launch enabled, keep Spotify running in background
-    if (isAutoLaunchEnabled()) {
-      launchSpotifyInBackground().catch(() => {});
-    }
-  };
-
-  const handleLogout = () => {
-    clearSpotifyAuth();
-    setIsSpotifyConnected(false);
-    setSpotifyPlayback(null);
-    setInitialLikedTrack(null);
-    setInitialLikedList([]);
-    setShowQuickConnect(true);
-  };
-
-  // Check if running in Electron
-  const isElectron = Boolean(window.electronAPI?.isElectron);
-
-  const handleScaleChange = (newScale: PlayerScale) => {
-    setScale(newScale);
-    const dims = SCALES[newScale];
-    if (window.electronAPI?.setSize) {
-      window.electronAPI.setSize(dims.width, dims.height);
-    }
-  };
+    if (reducedMotion) setClickSparks([]);
+    window.addEventListener('pointerdown', pointerDown);
+    return () => window.removeEventListener('pointerdown', pointerDown);
+  }, [reducedMotion]);
 
   return (
     <div
-      className="w-full h-full relative flex flex-col items-center justify-center overflow-hidden"
-      style={{ backgroundColor: isElectron ? 'transparent' : currentTheme.bodyBg }}
+      className="w-full h-full relative flex items-center justify-center overflow-hidden"
+      data-motion={reducedMotion ? 'off' : 'on'}
+      data-theme={themeId}
+      data-layout={portrait ? 'portrait' : 'landscape'}
+      style={{ backgroundColor: isElectron ? 'transparent' : theme.bodyBg }}
     >
-      {/* CRT Scanline Overlay Effect */}
-      {crtEnabled && (
-        <div className="fixed inset-0 crt-overlay z-40 pointer-events-none" />
-      )}
-
-      {/* Floating Pixel Stars Background (only in browser mode) */}
       {!isElectron && (
-        <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-30">
-          <div className="absolute top-10 left-12 text-[#fec5db] text-xs font-pixel animate-pulse">✦</div>
-          <div className="absolute top-1/4 right-24 text-[#8fa2d4] text-xs font-pixel animate-bounce">★</div>
-          <div className="absolute bottom-20 left-28 text-[#ffd269] text-xs font-pixel animate-pulse">✦</div>
-          <div className="absolute bottom-1/3 right-16 text-[#9df0cf] text-xs font-pixel animate-bounce">★</div>
-          <div className="absolute top-1/2 left-8 text-[#fec5db] text-[10px] font-pixel">✦</div>
+        <div aria-hidden="true" className="absolute inset-0 pointer-events-none overflow-hidden opacity-30" style={{ color: theme.accentPink }}>
+          <div className="absolute top-10 left-12 text-xs font-pixel animate-pulse">✦</div>
+          <div className="absolute top-1/4 right-24 text-xs font-pixel animate-bounce">★</div>
+          <div className="absolute bottom-20 left-28 text-xs font-pixel animate-pulse">✦</div>
+          <div className="absolute bottom-1/3 right-16 text-xs font-pixel animate-bounce">★</div>
         </div>
       )}
 
-      {/* Main Scaled Canvas: Fixed 720x410 layout, scaled uniformly like a fixed canvas */}
-      <main className="w-full h-full flex items-center justify-center z-10 overflow-hidden relative">
+      <main className="w-full h-full flex items-center justify-center z-10 relative">
         <div
-          className="relative flex items-center justify-center shrink-0"
-          style={{
-            width: `${BASE_WIDTH}px`,
-            height: `${BASE_HEIGHT}px`,
-            transform: `scale(${zoomScale})`,
-            transformOrigin: 'center center',
-          }}
+          className="relative shrink-0"
+          style={{ width: frameWidth, height: frameHeight, transform: `scale(${zoomScale})` }}
         >
-          <RetroWindow
-            theme={currentTheme}
-            artMode={artMode}
-            onCycleArtMode={handleCycleArtMode}
-            pixelResolution={pixelResolution}
-            windowTitle={windowTitle}
-            titleEmojis={titleEmojis}
-            scale={scale}
-            onScaleChange={handleScaleChange}
-            isSpotifyConnected={isSpotifyConnected}
-            spotifyPlayback={spotifyPlayback}
-            initialLikedTrack={null}
-            initialLikedList={initialLikedList}
-            onPollSpotify={pollSpotify}
-            onOpenSpotifyModal={() => setIsSpotifyModalOpen(true)}
-            onOpenSettingsModal={() => setIsSettingsModalOpen(true)}
-            isModalOpen={isSpotifyModalOpen || isSettingsModalOpen || showQuickConnect || showAutoLaunchModal}
-          />
+          <div className="w-full h-full" ref={(element) => { if (element) element.inert = Boolean(modal); }}>
+            <RetroWindow
+              theme={theme}
+              artMode={artMode}
+              pixelResolution={Number(pixelResolution)}
+              reducedMotion={reducedMotion}
+              crtEnabled={crt === 'on'}
+              windowTitle={windowTitle}
+              titleEmojis={titleEmojis}
+              scale={scale}
+              onScaleChange={setScale}
+              isSpotifyConnected={isSpotifyConnected}
+              spotifyPlayback={spotifyPlayback}
+              onPollSpotify={pollSpotify}
+              onOpenSpotifyModal={(opener) => openModal('spotify', opener)}
+              onOpenSettingsModal={(opener) => openModal('settings', opener)}
+              isModalOpen={Boolean(modal)}
+            />
+          </div>
 
-          {/* 1-Click Spotify Connect Prompt on Startup */}
-          <QuickConnectModal
-            isOpen={showQuickConnect}
-            onClose={() => setShowQuickConnect(false)}
-            needsScopeUpgrade={needsScopeUpgrade}
-            onConnected={preloadLikedSongsList}
-          />
-
-          {/* First-Time Permission Prompt: Auto-Launch Spotify in Background */}
-          <AutoLaunchPermissionModal
-            isOpen={showAutoLaunchModal}
-            onClose={() => setShowAutoLaunchModal(false)}
-            onAccepted={() => {
-              preloadLikedSongsList();
-              pollSpotify();
-            }}
-          />
-
-          {/* Modals rendered directly inside the scaled 720x410 container so they never clip or distort! */}
-          <SpotifyModal
-            isOpen={isSpotifyModalOpen}
-            onClose={() => setIsSpotifyModalOpen(false)}
-            isLoggedIn={isSpotifyConnected}
-            userName={userName}
-            onLoginSuccess={handleLoginSuccess}
-            onLogout={handleLogout}
-          />
-
-          <SettingsModal
-            isOpen={isSettingsModalOpen}
-            onClose={() => setIsSettingsModalOpen(false)}
-            currentTheme={currentTheme}
-            onThemeSelect={setCurrentTheme}
-            artMode={artMode}
-            onArtModeSelect={setArtMode}
-            pixelResolution={pixelResolution}
-            onPixelResolutionChange={setPixelResolution}
-            crtEnabled={crtEnabled}
-            onToggleCrt={() => setCrtEnabled(!crtEnabled)}
-            soundEnabled={soundEnabled}
-            onToggleSound={setSoundEnabled}
-            windowTitle={windowTitle}
-            onWindowTitleChange={handleWindowTitleChange}
-            titleEmojis={titleEmojis}
-            onTitleEmojisChange={handleTitleEmojisChange}
-            scale={scale}
-            onScaleChange={handleScaleChange}
-          />
+          {modal && (
+            <PlayerDialog key={modal} label={labels[modal]} opener={modalOpener.current} onClose={closeModal}>
+              {modal === 'connect' && (
+                <QuickConnectModal isOpen onClose={closeModal} needsScopeUpgrade={needsScopeUpgrade} authError={authError}
+                  onRetry={resetAuthError} onOpenSetup={() => openModal('spotify')} />
+              )}
+              {modal === 'autoLaunch' && <AutoLaunchPermissionModal isOpen onClose={closeModal} />}
+              {modal === 'spotify' && (
+                <SpotifyModal
+                  isOpen onClose={closeModal} isLoggedIn={isSpotifyConnected} userName={userName}
+                  authError={authError} authForbidden={authForbidden} onRetryAuth={resetAuthError}
+                  onLoginSuccess={() => {
+                    session.current++;
+                    connect(getStoredUserName());
+                  }}
+                  onLogout={disconnect}
+                  onPlaybackStarted={pollSpotify}
+                />
+              )}
+              {modal === 'settings' && (
+                <SettingsModal
+                  isOpen onClose={closeModal} currentTheme={theme} onThemeSelect={(next) => setThemeId(next.id)}
+                  artMode={artMode} onArtModeSelect={setArtMode}
+                  pixelResolution={Number(pixelResolution)} onPixelResolutionChange={(value) => setPixelResolution(String(value))}
+                  crtEnabled={crt === 'on'} onToggleCrt={() => setCrt(crt === 'on' ? 'off' : 'on')}
+                  motion={motion} onMotionChange={setMotion}
+                  soundEnabled={soundEnabled} onToggleSound={setSoundEnabled}
+                  windowTitle={windowTitle} onWindowTitleChange={setWindowTitle}
+                  titleEmojis={titleEmojis} onTitleEmojisChange={setTitleEmojis}
+                  scale={scale} onScaleChange={setScale}
+                />
+              )}
+            </PlayerDialog>
+          )}
         </div>
       </main>
 
@@ -389,10 +330,12 @@ export const App: React.FC = () => {
       {clickSparks.map((spark) => (
         <div
           key={spark.id}
+          aria-hidden="true"
           className="fixed pointer-events-none z-[99999] select-none"
           style={{ left: `${spark.x}px`, top: `${spark.y}px` }}
         >
-          <div className="relative -left-[16px] -top-[16px] w-[32px] h-[32px] animate-pixel-spark">
+          <div onAnimationEnd={() => setClickSparks((previous) => previous.filter(({ id }) => id !== spark.id))}
+            className="relative -left-[16px] -top-[16px] w-[32px] h-[32px] animate-pixel-spark">
             {/* Top vertical ray + shadow */}
             <div className="absolute top-[2px] left-[15px] w-[2px] h-[6px] bg-[#191244] shadow-[1.5px_1.5px_0px_rgba(25,18,68,0.28)]" />
 

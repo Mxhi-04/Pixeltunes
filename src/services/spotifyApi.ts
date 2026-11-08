@@ -1,16 +1,5 @@
-/**
- * Spotify API Helper Module
- * 
- * Requirements:
- * - Attaches in-memory Bearer token via getAccessToken().
- * - If any call returns 401, silently refreshes once and retries once.
- * - On 429 Too Many Requests, waits for the Retry-After header before retrying.
- * - On network error, retries with exponential backoff (5s, 10s, 20s, max 60s) without disturbing the UI.
- * - No tokens printed to the console or written to log files.
- */
-
 import { getAccessToken, refresh } from './spotifyAuth';
-import { SpotifyPlaybackState, SpotifyDevice } from '../types/spotify';
+import { SpotifyPlaybackState, SpotifyDevice, SpotifyPlaylist, SpotifyTrack } from '../types/spotify';
 import {
   isAutoLaunchEnabled,
   launchSpotifyInBackground,
@@ -20,95 +9,49 @@ const SPOTIFY_API_BASE = 'https://api.spotify.com/v1';
 
 export interface SpotifyRequestOptions {
   body?: any;
-  headers?: Record<string, string>;
-  maxNetworkRetries?: number;
 }
 
-/**
- * Universal Spotify API Request Helper
- */
+let rateLimitedUntil = 0;
+
 export async function spotifyRequest(
   method: string,
   path: string,
   options: SpotifyRequestOptions = {}
 ): Promise<Response> {
-  const backoffDelays = [5000, 10000, 20000, 40000, 60000];
-  let networkAttempt = 0;
-  const maxRetries = options.maxNetworkRetries ?? 5;
-
-  const url = path.startsWith('http')
-    ? path
-    : `${SPOTIFY_API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-
-  while (true) {
-    const token = await getAccessToken();
-    if (!token) {
-      throw new Error('Not authenticated with Spotify');
-    }
-
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {}),
-    };
-
-    let serializedBody: BodyInit | undefined = undefined;
-    if (options.body) {
-      if (typeof options.body === 'string') {
-        serializedBody = options.body;
-      } else if (typeof options.body === 'object' && !(options.body instanceof FormData)) {
-        headers['Content-Type'] = 'application/json';
-        serializedBody = JSON.stringify(options.body);
-      } else {
-        serializedBody = options.body;
-      }
-    }
-
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        method,
-        headers,
-        body: serializedBody,
-      });
-    } catch (networkError) {
-      // On network error: retry with exponential backoff (5s, 10s, 20s, max 60s)
-      if (networkAttempt >= maxRetries) {
-        throw networkError;
-      }
-      const delay = backoffDelays[Math.min(networkAttempt, backoffDelays.length - 1)];
-      networkAttempt++;
-      await new Promise((res) => setTimeout(res, delay));
-      continue;
-    }
-
-    // 1. Handle 401 Unauthorized: Refresh once, then retry call once
-    if (response.status === 401) {
-      const freshToken = await refresh();
-      if (freshToken) {
-        headers.Authorization = `Bearer ${freshToken}`;
-        try {
-          response = await fetch(url, {
-            method,
-            headers,
-            body: serializedBody,
-          });
-        } catch (retryErr) {
-          throw retryErr;
-        }
-      }
-      return response;
-    }
-
-    // 2. Handle 429 Too Many Requests: Wait for Retry-After header before retrying
-    if (response.status === 429) {
-      const retryAfterHeader = response.headers.get('Retry-After');
-      const waitSeconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 5;
-      await new Promise((res) => setTimeout(res, Math.max(1, waitSeconds) * 1000));
-      continue;
-    }
-
-    return response;
+  const url = new URL(path.startsWith('/') ? `/v1${path}` : path, `${SPOTIFY_API_BASE}/`);
+  if (url.origin !== 'https://api.spotify.com' || !url.pathname.startsWith('/v1/')) {
+    throw new Error('Invalid Spotify API URL');
   }
+
+  const send = (token: string) => fetch(url, {
+    method,
+    headers: {
+      ...(options.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      Authorization: `Bearer ${token}`,
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (Date.now() < rateLimitedUntil) {
+    return new Response(null, { status: 429, headers: { 'Retry-After': String(Math.ceil((rateLimitedUntil - Date.now()) / 1000)) } });
+  }
+
+  const token = await getAccessToken();
+  if (!token) throw new Error('Not authenticated with Spotify');
+
+  let response = await send(token);
+  if (response.status === 401) {
+    const freshToken = await refresh();
+    if (freshToken) response = await send(freshToken);
+  }
+
+  if (response.status === 429) {
+    const retryAfter = Number(response.headers.get('Retry-After')) || 5;
+    rateLimitedUntil = Date.now() + Math.max(1, retryAfter) * 1000;
+  }
+
+  return response;
 }
 
 // Snake_case alias per requirements
@@ -130,200 +73,55 @@ export async function getCurrentlyPlaying(): Promise<any | null> {
   }
 }
 
-let cachedUserId: string | null = null;
-
-export function getUserId(): string | null {
-  if (cachedUserId) return cachedUserId;
-  try {
-    return localStorage.getItem('pixeltunes_user_id');
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Get authorized user profile
- */
 export async function getUserProfile(): Promise<{ id: string; display_name: string } | null> {
-  try {
-    const res = await spotifyRequest('GET', '/me');
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.id) {
-        cachedUserId = data.id;
-        try {
-          localStorage.setItem('pixeltunes_user_id', data.id);
-        } catch {}
-      }
-      return data;
-    }
-  } catch (e) {}
-  return null;
+  const res = await spotifyRequest('GET', '/me');
+  return res.ok ? await res.json() : null;
 }
 
-/**
- * Get authoritative playback state (track, position, shuffle, repeat, device)
- */
 export async function getPlaybackState(): Promise<SpotifyPlaybackState | null> {
-  try {
-    const res = await spotifyRequest('GET', '/me/player');
-    if (res.status === 204 || res.status === 404 || !res.ok) {
-      return null;
-    }
-    return await res.json();
-  } catch (e) {
-    return null;
-  }
+  const res = await spotifyRequest('GET', '/me/player?additional_types=track,episode');
+  if (res.status === 204 || res.status === 404) return null;
+  if (!res.ok) throw new Error(`Spotify playback status ${res.status}`);
+  return await res.json();
 }
 
-/**
- * Helper to ensure Spotify desktop client is running and available as a playback target.
- * If 0 devices are reported and auto-launch is enabled, it automatically wakes Spotify in the background,
- * waits for the device to connect, and transfers playback.
- */
-export async function ensureActivePlaybackDevice(): Promise<SpotifyDevice | null> {
-  let devices = await getDevices();
-  const activeOrComputer =
-    devices.find((d) => d.is_active) ||
-    devices.find((d) => d.type?.toLowerCase() === 'computer') ||
-    devices[0];
+function pickDevice(devices: SpotifyDevice[], id?: string) {
+  const available = devices.filter((device) => device.id && !device.is_restricted);
+  if (id) return available.find((device) => device.id === id);
+  return available.find((device) => device.is_active) ||
+    available.find((device) => device.type?.toLowerCase() === 'computer') || available[0];
+}
 
-  if (activeOrComputer) {
-    return activeOrComputer;
+export async function ensureActivePlaybackDevice(deviceId?: string): Promise<SpotifyDevice | null> {
+  const target = pickDevice(await getDevices(), deviceId);
+  if (target || deviceId || !isAutoLaunchEnabled() || !await launchSpotifyInBackground()) return target ?? null;
+
+  const deadline = Date.now() + 8000;
+  while (Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    const device = pickDevice(await getDevices());
+    if (device) return device;
   }
-
-  // If auto-launch is enabled, launch Spotify in background minimized and await device
-  if (isAutoLaunchEnabled()) {
-    console.log('[Spotify Auto-Launch] Launching Spotify in background minimized...');
-    await launchSpotifyInBackground();
-    // Poll for device for up to 8 seconds (every 450ms)
-    for (let i = 0; i < 16; i++) {
-      await new Promise((r) => setTimeout(r, 450));
-      devices = await getDevices();
-      const newTarget =
-        devices.find((d) => d.type?.toLowerCase() === 'computer') ||
-        devices.find((d) => d.is_active) ||
-        devices[0];
-
-      if (newTarget) {
-        console.log('[Spotify Auto-Launch] Spotify device ready:', newTarget.name);
-        await transferPlayback(newTarget.id, false).catch(() => {});
-        return newTarget;
-      }
-    }
-  }
-
   return null;
 }
 
-/**
- * Play / Resume with Seamless Auto-Wake and Fallback
- */
+function deviceQuery(deviceId?: string) {
+  return deviceId ? `?device_id=${encodeURIComponent(deviceId)}` : '';
+}
+
 export async function play(deviceId?: string): Promise<boolean> {
   try {
-    let devices = await getDevices();
-
-    // If devices list is empty, ensure active playback device
-    if (devices.length === 0) {
-      const readyDevice = await ensureActivePlaybackDevice();
-      if (readyDevice) {
-        devices = [readyDevice];
-      }
-    }
-
-    if (devices.length === 0) {
-      return false;
-    }
-
-    // Determine target device:
-    // Prefer explicitly active device -> computer/desktop device -> first available
-    const activeDevice = devices.find((d) => d.is_active);
-    const computerDevice = devices.find((d) => d.type?.toLowerCase() === 'computer');
-    const target = deviceId
-      ? devices.find((d) => d.id === deviceId) || devices[0]
-      : (activeDevice || computerDevice || devices[0]);
-
-    const targetId = target?.id;
-    if (!targetId) return false;
-
-    // If target device is not currently active, transfer playback to activate it
-    if (!target.is_active) {
-      await transferPlayback(targetId, true);
-      await new Promise((r) => setTimeout(r, 250));
-    }
-
-    const path = `/me/player/play?device_id=${targetId}`;
-
-    // 1. First attempt standard resume
+    const device = await ensureActivePlaybackDevice(deviceId);
+    if (!device) return false;
+    const path = `/me/player/play${deviceQuery(device.id ?? undefined)}`;
     const res = await spotifyRequest('PUT', path);
-    if (res.ok || res.status === 204) {
-      return true;
-    }
+    if (res.ok) return true;
+    if (![404, 400].includes(res.status)) return false;
 
-    // 2. If simple resume failed (e.g. idle player without loaded context):
-    // Retrieve the song that was playing in Spotify from localStorage or liked songs!
-    let trackUri: string | undefined;
-    let subsequentUris: string[] = [];
-    try {
-      const stored = localStorage.getItem('pixeltunes_last_spotify_track');
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        trackUri = parsed.uri;
-      }
-      const cache = localStorage.getItem('pixeltunes_liked_songs_cache');
-      if (cache) {
-        const list = JSON.parse(cache);
-        subsequentUris = list
-          .filter((t: any) => t.uri && t.uri !== trackUri)
-          .map((t: any) => t.uri)
-          .slice(0, 48);
-      }
-    } catch {}
-
-    if (!trackUri) {
-      const liked = await getLikedSongs(10).catch(() => []);
-      if (liked && liked.length > 0) {
-        trackUri = liked[0].uri;
-        subsequentUris = liked.slice(1).map((t) => t.uri).filter(Boolean).slice(0, 48);
-      }
-    }
-
-    if (!trackUri) {
-      const queueData = await getQueue().catch(() => null);
-      trackUri = queueData?.currentlyPlaying?.uri || (queueData?.queue && queueData.queue.length > 0 ? queueData.queue[0]?.uri : undefined);
-    }
-
-    if (trackUri) {
-      let uid = getUserId();
-      if (!uid) {
-        const uProfile = await getUserProfile().catch(() => null);
-        uid = uProfile?.id || null;
-      }
-
-      if (uid) {
-        const playRes = await spotifyRequest('PUT', path, {
-          body: {
-            context_uri: `spotify:user:${uid}:collection`,
-            offset: { uri: trackUri },
-          },
-        });
-        if (playRes.ok || playRes.status === 204) {
-          return true;
-        }
-      }
-
-      // Pure Web API playback fallback with uris
-      const playTrackRes = await spotifyRequest('PUT', path, {
-        body: { uris: [trackUri, ...subsequentUris] },
-      });
-      if (playTrackRes.ok || playTrackRes.status === 204) {
-        return true;
-      }
-    }
-
-    return false;
-  } catch (e) {
-    console.error('Seamless auto-play error:', e);
+    const liked = await getLikedSongs(10);
+    const uris = liked.map((track) => track.uri);
+    return uris.length > 0 && (await spotifyRequest('PUT', path, { body: { uris } })).ok;
+  } catch {
     return false;
   }
 }
@@ -333,7 +131,7 @@ export async function play(deviceId?: string): Promise<boolean> {
  */
 export async function pause(deviceId?: string): Promise<boolean> {
   try {
-    const path = deviceId ? `/me/player/pause?device_id=${deviceId}` : '/me/player/pause';
+    const path = `/me/player/pause${deviceQuery(deviceId)}`;
     const res = await spotifyRequest('PUT', path);
     return res.ok || res.status === 204;
   } catch (e) {
@@ -346,7 +144,7 @@ export async function pause(deviceId?: string): Promise<boolean> {
  */
 export async function nextTrack(deviceId?: string): Promise<boolean> {
   try {
-    const path = deviceId ? `/me/player/next?device_id=${deviceId}` : '/me/player/next';
+    const path = `/me/player/next${deviceQuery(deviceId)}`;
     const res = await spotifyRequest('POST', path);
     return res.ok || res.status === 204;
   } catch (e) {
@@ -359,7 +157,7 @@ export async function nextTrack(deviceId?: string): Promise<boolean> {
  */
 export async function previousTrack(deviceId?: string): Promise<boolean> {
   try {
-    const path = deviceId ? `/me/player/previous?device_id=${deviceId}` : '/me/player/previous';
+    const path = `/me/player/previous${deviceQuery(deviceId)}`;
     const res = await spotifyRequest('POST', path);
     return res.ok || res.status === 204;
   } catch (e) {
@@ -372,7 +170,7 @@ export async function previousTrack(deviceId?: string): Promise<boolean> {
  */
 export async function seek(positionMs: number, deviceId?: string): Promise<boolean> {
   try {
-    const query = new URLSearchParams({ position_ms: positionMs.toString() });
+    const query = new URLSearchParams({ position_ms: String(Math.max(0, Math.round(positionMs))) });
     if (deviceId) query.append('device_id', deviceId);
     const res = await spotifyRequest('PUT', `/me/player/seek?${query.toString()}`);
     return res.ok || res.status === 204;
@@ -386,7 +184,7 @@ export async function seek(positionMs: number, deviceId?: string): Promise<boole
  */
 export async function setVolume(volumePercent: number, deviceId?: string): Promise<boolean> {
   try {
-    const query = new URLSearchParams({ volume_percent: Math.round(volumePercent).toString() });
+    const query = new URLSearchParams({ volume_percent: String(Math.max(0, Math.min(100, Math.round(volumePercent)))) });
     if (deviceId) query.append('device_id', deviceId);
     const res = await spotifyRequest('PUT', `/me/player/volume?${query.toString()}`);
     return res.ok || res.status === 204;
@@ -454,10 +252,10 @@ export async function setRepeat(state: 'off' | 'track' | 'context', deviceId?: s
 /**
  * Search Spotify Tracks by query
  */
-export async function searchTracks(query: string, limit: number = 20): Promise<any[]> {
+export async function searchTracks(query: string, limit: number = 10): Promise<any[]> {
   try {
     if (!query || !query.trim()) return [];
-    const res = await spotifyRequest('GET', `/search?q=${encodeURIComponent(query.trim())}&type=track&limit=${limit}`);
+    const res = await spotifyRequest('GET', `/search?q=${encodeURIComponent(query.trim())}&type=track&limit=${Math.min(10, limit)}`);
     if (res.ok) {
       const data = await res.json();
       return data.tracks?.items || [];
@@ -468,23 +266,23 @@ export async function searchTracks(query: string, limit: number = 20): Promise<a
   return [];
 }
 
-/**
- * Get Spotify Player Queue
- */
-export async function getQueue(): Promise<{ currentlyPlaying: any; queue: any[] }> {
+export async function getQueue(): Promise<{
+  currentlyPlaying: SpotifyPlaybackState['item'];
+  queue: NonNullable<SpotifyPlaybackState['item']>[];
+}> {
+  const res = await spotifyRequest('GET', '/me/player/queue');
+  if (res.status === 204) return { currentlyPlaying: null, queue: [] };
+  if (!res.ok) throw new Error(`Spotify queue status ${res.status}`);
+  const data = await res.json();
+  return { currentlyPlaying: data.currently_playing, queue: (data.queue || []).filter(Boolean) };
+}
+
+export async function addTrackToQueue(uri: string) {
   try {
-    const res = await spotifyRequest('GET', '/me/player/queue');
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        currentlyPlaying: data.currently_playing,
-        queue: data.queue || [],
-      };
-    }
-  } catch (e) {
-    console.error('Spotify get queue error:', e);
+    return (await spotifyRequest('POST', `/me/player/queue?${new URLSearchParams({ uri })}`)).ok;
+  } catch {
+    return false;
   }
-  return { currentlyPlaying: null, queue: [] };
 }
 
 /**
@@ -493,122 +291,36 @@ export async function getQueue(): Promise<{ currentlyPlaying: any; queue: any[] 
 export async function playTrack(
   uri: string,
   deviceId?: string,
-  remainingUris?: string[],
+  remainingUris: string[] = [],
   contextUri?: string
 ): Promise<boolean> {
+  const uris = [uri, ...remainingUris.filter((value) => value && value !== uri).slice(0, 49)];
+  return playSelection(contextUri ? { context_uri: contextUri, offset: { uri } } : { uris }, deviceId);
+}
+
+export function playPlaylist(contextUri: string, deviceId?: string): Promise<boolean> {
+  return playSelection({ context_uri: contextUri }, deviceId);
+}
+
+async function playSelection(body: Record<string, unknown>, deviceId?: string): Promise<boolean> {
   try {
-    // 1. Resolve active or computer device
-    let devices = await getDevices();
-    if (devices.length === 0) {
-      const readyDevice = await ensureActivePlaybackDevice();
-      if (readyDevice) {
-        devices = [readyDevice];
-      }
-    }
-
-    const active = devices.find((d) => d.is_active);
-    const computer = devices.find((d) => d.type?.toLowerCase() === 'computer');
-    const target = deviceId
-      ? devices.find((d) => d.id === deviceId) || devices[0]
-      : (active || computer || devices[0]);
-
-    const targetId = target?.id;
-
-    // 2. If target is inactive, activate device silently via API without unminimizing
-    if (target && !target.is_active && targetId) {
-      await transferPlayback(targetId, true).catch(() => {});
-      await new Promise((r) => setTimeout(r, 200));
-    }
-
-    const query = targetId ? `?device_id=${targetId}` : '';
-
-    // 3. Resolve context URI (use user's Liked Songs collection if not specified)
-    let effectiveContextUri = contextUri;
-    if (!effectiveContextUri) {
-      let uid = getUserId();
-      if (!uid) {
-        const uProfile = await getUserProfile().catch(() => null);
-        uid = uProfile?.id || null;
-      }
-      if (uid) {
-        effectiveContextUri = `spotify:user:${uid}:collection`;
-      }
-    }
-
-    let body: any;
-    if (effectiveContextUri) {
-      body = { context_uri: effectiveContextUri, offset: { uri } };
-    } else {
-      const remainingClean = (remainingUris || []).filter((u) => u && u !== uri);
-      body = { uris: [uri, ...remainingClean.slice(0, 49)] };
-    }
-
-    let res = await spotifyRequest(
-      'PUT',
-      `/me/player/play${query}`,
-      { body }
-    );
-    if (!res.ok && res.status !== 204 && effectiveContextUri) {
-      // Fallback with uris array
-      const remainingClean = (remainingUris || []).filter((u) => u && u !== uri);
-      res = await spotifyRequest('PUT', `/me/player/play${query}`, {
-        body: { uris: [uri, ...remainingClean.slice(0, 49)] },
-      });
-      if (!res.ok && res.status !== 204) {
-        // Fallback simple resume
-        res = await spotifyRequest('PUT', `/me/player/play${query}`);
-      }
-    }
-
-    return res.ok || res.status === 204;
-  } catch (e) {
-    console.error('Spotify play track error:', e);
+    const device = await ensureActivePlaybackDevice(deviceId);
+    if (!device) return false;
+    const result = await spotifyRequest('PUT', `/me/player/play${deviceQuery(device.id ?? undefined)}`, { body });
+    return result.ok;
+  } catch {
     return false;
   }
 }
 
-/**
- * Play a specific Spotify Playlist / Context by URI
- */
-export async function playPlaylist(contextUri: string, deviceId?: string): Promise<boolean> {
-  try {
-    let targetId = deviceId;
-    if (!targetId) {
-      let devices = await getDevices();
-      if (devices.length === 0) {
-        const readyDevice = await ensureActivePlaybackDevice();
-        if (readyDevice) {
-          devices = [readyDevice];
-        }
-      }
-      const active = devices.find((d) => d.is_active);
-      targetId = active?.id || (devices.length > 0 ? devices[0].id : undefined);
-    }
-    const query = targetId ? `?device_id=${targetId}` : '';
-    const res = await spotifyRequest('PUT', `/me/player/play${query}`, {
-      body: { context_uri: contextUri },
-    });
-    return res.ok || res.status === 204;
-  } catch (e) {
-    console.error('Spotify play playlist error:', e);
-    return false;
-  }
-}
-
-/**
- * Get User Playlists
- */
-export async function getUserPlaylists(limit: number = 20): Promise<any[]> {
-  try {
-    const res = await spotifyRequest('GET', `/me/playlists?limit=${limit}`);
-    if (res.ok) {
-      const data = await res.json();
-      return data.items || [];
-    }
-  } catch (e) {
-    // 403 or network error fallback
-  }
-  return [];
+export async function getUserPlaylists(offset = 0): Promise<{ playlists: SpotifyPlaylist[]; nextOffset: number | null }> {
+  const res = await spotifyRequest('GET', `/me/playlists?limit=50&offset=${offset}`);
+  if (!res.ok) throw new Error(`Spotify playlists status ${res.status}`);
+  const { items, next }: { items: (SpotifyPlaylist | null)[]; next: string | null } = await res.json();
+  return {
+    playlists: items.filter((playlist): playlist is SpotifyPlaylist => Boolean(playlist?.id && playlist?.uri)),
+    nextOffset: next && items.length ? offset + items.length : null,
+  };
 }
 
 /**
@@ -616,10 +328,13 @@ export async function getUserPlaylists(limit: number = 20): Promise<any[]> {
  */
 export async function getPlaylistTracks(playlistId: string, limit: number = 50): Promise<any[]> {
   try {
-    const res = await spotifyRequest('GET', `/playlists/${playlistId}/tracks?limit=${limit}`);
+    let res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=${limit}`);
+    if (res.status === 404) {
+      res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(playlistId)}/tracks?limit=${limit}`);
+    }
     if (res.ok) {
       const data = await res.json();
-      return (data.items || []).map((item: any) => item.track).filter(Boolean);
+      return (data.items || []).map((item: any) => item.item || item.track).filter(Boolean);
     }
   } catch (e) {
     // fallback
@@ -630,17 +345,12 @@ export async function getPlaylistTracks(playlistId: string, limit: number = 50):
 /**
  * Get User's Liked Songs (Saved Tracks)
  */
-export async function getLikedSongs(limit: number = 50): Promise<any[]> {
-  try {
-    const res = await spotifyRequest('GET', `/me/tracks?limit=${limit}`);
-    if (res.ok) {
-      const data = await res.json();
-      return (data.items || []).map((item: any) => item.track).filter(Boolean);
-    }
-  } catch (e) {
-    console.error('Spotify get liked songs error:', e);
-  }
-  return [];
+export async function getLikedSongs(limit: number = 50): Promise<SpotifyTrack[]> {
+  const res = await spotifyRequest('GET', `/me/tracks?limit=${limit}`);
+  if (!res.ok) throw new Error(`Spotify library status ${res.status}`);
+  const data = await res.json();
+  return (data.items || []).map((item: { track?: SpotifyTrack }) => item.track)
+    .filter((track: SpotifyTrack | undefined) => track?.uri?.startsWith('spotify:track:'));
 }
 
 /**
@@ -660,35 +370,5 @@ export async function getAlbumTracks(albumId: string, albumMeta?: any): Promise<
     console.error('Spotify get album tracks error:', e);
   }
   return [];
-}
-
-/**
- * Loads the user's first Liked Song into Spotify and leaves it paused.
- * Guarantees that Pixeltunes is paused on the user's first liked song on startup or connect.
- */
-export async function loadAndPauseFirstLikedSong(): Promise<{
-  firstTrack: any | null;
-  likedSongs: any[];
-}> {
-  try {
-    const liked = await getLikedSongs(50);
-    if (!liked || liked.length === 0) {
-      return { firstTrack: null, likedSongs: [] };
-    }
-
-    const firstSong = liked[0];
-
-    // Store in cache for instantaneous rendering
-    try {
-      localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(firstSong));
-      localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
-    } catch {}
-
-    // Never trigger OS open commands - keep Spotify completely minimized and untouched!
-    return { firstTrack: firstSong, likedSongs: liked };
-  } catch (err) {
-    console.error('Failed to load and pause first liked song:', err);
-    return { firstTrack: null, likedSongs: [] };
-  }
 }
 

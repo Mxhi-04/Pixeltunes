@@ -3,7 +3,9 @@ import { getPixelCoverForTrack, PixelCover } from '../types/covers';
 
 interface PixelCanvasProps {
   isPlaying: boolean;
+  reducedMotion: boolean;
   albumArtUrl?: string | null;
+  albumArtLink?: string;
   mode: 'pixelCovers' | 'pixelArt' | 'cassette' | 'saturn' | 'inspo';
   pixelResolution?: number;
   trackTitle?: string;
@@ -60,7 +62,9 @@ const BUNNY_STARS = [
 
 export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   isPlaying,
+  reducedMotion,
   albumArtUrl,
+  albumArtLink,
   mode,
   pixelResolution = 180,
   trackTitle = 'FLY ME TO THE MOON',
@@ -73,16 +77,9 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
   },
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const animFrameRef = useRef<number | null>(null);
-
-  // Cached image for Spotify Album Art (pixelArt mode)
-  const cachedCoverImageRef = useRef<HTMLImageElement | null>(null);
-  const [hasCoverLoaded, setHasCoverLoaded] = useState(false);
-  const previousTempFileRef = useRef<string | null>(null);
-  const currentTrackKeyRef = useRef<string>('');
-
-  // Preloaded Saturn image ref for the new animated Saturn Galaxy cover
-  const saturnImgRef = useRef<HTMLImageElement | null>(null);
+  const [failedArtworkUrl, setFailedArtworkUrl] = useState<string | null>(null);
+  const [coverImage, setCoverImage] = useState<{ url: string; image: HTMLImageElement } | null>(null);
+  const { navy, pink, periwinkle, cream } = themeColors;
 
   // Pixel Covers Mode active check
   const isPixelCoversMode = mode === 'pixelCovers' || mode === 'inspo' || mode === 'saturn';
@@ -111,222 +108,93 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     }
   };
 
-  // Preload the Saturn base cover image
+  const coverUrl = activePixelCover.src;
+  const showAnimatedGif = isPixelCoversMode && activePixelCover.type === 'gif' && !reducedMotion;
+
   useEffect(() => {
-    const img = new Image();
-    img.src = './covers/00_saturn_galaxy.png';
-    img.onload = () => {
-      saturnImgRef.current = img;
-    };
-    img.onerror = () => {
-      // Fallback relative root if needed
-      img.src = '/covers/00_saturn_galaxy.png';
-    };
-  }, []);
+    if (!isPixelCoversMode || !coverUrl || showAnimatedGif) return;
+    const image = new Image();
+    image.onload = () => setCoverImage({ url: coverUrl, image });
+    image.src = coverUrl;
+    return () => { image.onload = null; };
+  }, [isPixelCoversMode, coverUrl, showAnimatedGif]);
 
-  const pixelSize = pixelResolution || 180;
-  const trackKey = `${trackTitle}__${artistName}__${albumArtUrl || 'procedural'}__${pixelSize}`;
+  const showSpotifyArtwork = mode === 'pixelArt' && albumArtUrl &&
+    albumArtUrl !== failedArtworkUrl && albumArtUrl.startsWith('https://');
 
-  // Process Spotify Album Artwork (used in mode === 'pixelArt')
-  useEffect(() => {
-    if (mode !== 'pixelArt') return;
-    if (currentTrackKeyRef.current === trackKey && cachedCoverImageRef.current) {
-      return;
-    }
-    currentTrackKeyRef.current = trackKey;
-
-    let isCancelled = false;
-
-    const deleteOldCover = async () => {
-      if (previousTempFileRef.current && window.electronAPI?.deleteTempCover) {
-        const fileToDelete = previousTempFileRef.current;
-        previousTempFileRef.current = null;
-        try {
-          await window.electronAPI.deleteTempCover(fileToDelete);
-        } catch (e) {
-          console.warn('Could not delete old cover file:', e);
-        }
-      }
-    };
-
-    const generateAndDisplayCover = async () => {
-      await deleteOldCover();
-      if (isCancelled) return;
-
-      const offscreen = document.createElement('canvas');
-      offscreen.width = pixelSize;
-      offscreen.height = pixelSize;
-      const ctx = offscreen.getContext('2d');
-      if (!ctx) return;
-      ctx.imageSmoothingEnabled = false;
-
-      if (albumArtUrl) {
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = albumArtUrl;
-
-        await new Promise<void>((resolve) => {
-          img.onload = () => resolve();
-          img.onerror = () => resolve();
-        });
-
-        if (isCancelled) return;
-        ctx.drawImage(img, 0, 0, pixelSize, pixelSize);
-      } else {
-        // Fallback procedural retro cover when no Spotify album art
-        drawSynthwaveLandscape(ctx, pixelSize, pixelSize, trackTitle + artistName);
-      }
-
-      const exportCanvas = document.createElement('canvas');
-      exportCanvas.width = 240;
-      exportCanvas.height = 240;
-      const exportCtx = exportCanvas.getContext('2d');
-      if (!exportCtx) return;
-
-      exportCtx.imageSmoothingEnabled = false;
-      exportCtx.drawImage(offscreen, 0, 0, 240, 240);
-
-      const dataUrl = exportCanvas.toDataURL('image/png');
-
-      if (window.electronAPI?.saveTempCover) {
-        try {
-          const savedPath = await window.electronAPI.saveTempCover(dataUrl, trackKey);
-          previousTempFileRef.current = savedPath;
-        } catch (saveErr) {
-          console.warn('Could not write temporary pixel cover file:', saveErr);
-        }
-      }
-
-      const displayImg = new Image();
-      displayImg.src = dataUrl;
-      displayImg.onload = () => {
-        if (!isCancelled) {
-          cachedCoverImageRef.current = displayImg;
-          setHasCoverLoaded(true);
-        }
-      };
-    };
-
-    generateAndDisplayCover();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [trackKey, albumArtUrl, trackTitle, artistName, pixelSize, mode]);
-
-  // Clean up disk covers on unmount
-  useEffect(() => {
-    return () => {
-      if (previousTempFileRef.current && window.electronAPI?.deleteTempCover) {
-        window.electronAPI.deleteTempCover(previousTempFileRef.current);
-        previousTempFileRef.current = null;
-      }
-    };
-  }, []);
-
-  // 60FPS Canvas Drawing & Animation Loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
+    const ctx = canvas?.getContext('2d');
+    if (!canvas || !ctx) return;
 
-    let frame = 0;
+    const { width, height } = canvas;
+    const colors = { navy, pink, periwinkle, cream };
+    const cover = coverImage?.url === coverUrl ? coverImage?.image : undefined;
+    const animate = !reducedMotion && (mode === 'cassette' ? isPlaying : isPixelCoversMode);
+    const start = performance.now();
+    let frameId = 0;
 
-    const drawCanvas = () => {
-      frame++;
+    const render = (now: number) => {
+      const frame = animate ? (now - start) / (1000 / 60) + 1 : 1;
       ctx.imageSmoothingEnabled = false;
-      const w = canvas.width;
-      const h = canvas.height;
-
-      // 1. CASSETTE TAPE MODE
       if (mode === 'cassette') {
-        drawCassetteTape(ctx, w, h, frame, isPlaying);
-        return;
+        drawCassetteTape(ctx, width, height, frame, isPlaying && !reducedMotion);
+      } else if (mode === 'pixelArt') {
+        const art = document.createElement('canvas');
+        art.width = pixelResolution;
+        art.height = pixelResolution;
+        const artCtx = art.getContext('2d');
+        if (!artCtx) return;
+        drawSynthwaveLandscape(artCtx, pixelResolution, pixelResolution, trackTitle + artistName);
+        ctx.drawImage(art, 0, 0, width, height);
+      } else if (activePixelCover.type === 'canvas_saturn') {
+        drawSaturnScene(ctx, width, height, frame, cover ?? null);
+      } else if (activePixelCover.type === 'canvas_synthwave') {
+        drawSynthwaveScene(ctx, width, height, frame, isPlaying && !reducedMotion, trackTitle + artistName);
+      } else if (cover && activePixelCover.type === 'gif') {
+        // Canvas uses the default frame of animated image sources.
+        ctx.fillStyle = navy;
+        ctx.fillRect(0, 0, width, height);
+        const ratio = Math.min(width / cover.naturalWidth, height / cover.naturalHeight);
+        const w = cover.naturalWidth * ratio;
+        const h = cover.naturalHeight * ratio;
+        ctx.drawImage(cover, (width - w) / 2, (height - h) / 2, w, h);
+      } else {
+        drawMoonBunnyScene(ctx, width, height, frame, isPlaying && !reducedMotion, colors);
       }
 
-      // 2. SPOTIFY ART MODE (Pixelated Album Artwork)
-      if (mode === 'pixelArt') {
-        if (cachedCoverImageRef.current) {
-          ctx.drawImage(cachedCoverImageRef.current, 0, 0, w, h);
-        } else {
-          ctx.fillStyle = themeColors.navy;
-          ctx.fillRect(0, 0, w, h);
-        }
-        return;
-      }
-
-      // 3. PIXEL COVERS MODE (Shuffles with every song change!)
-      if (isPixelCoversMode) {
-        if (activePixelCover.type === 'canvas_saturn') {
-          drawSaturnScene(ctx, w, h, frame, saturnImgRef.current);
-          return;
-        }
-
-        if (activePixelCover.type === 'canvas_bunny') {
-          drawMoonBunnyScene(ctx, w, h, frame, isPlaying, themeColors);
-          return;
-        }
-
-        if (activePixelCover.type === 'canvas_synthwave') {
-          drawSynthwaveScene(ctx, w, h, frame, isPlaying, (trackTitle || '') + (artistName || ''));
-          return;
-        }
-      }
-
-      // Fallback: draw Moon Bunny scene
-      drawMoonBunnyScene(ctx, w, h, frame, isPlaying, themeColors);
+      if (animate) frameId = requestAnimationFrame(render);
     };
 
-    const render = () => {
-      drawCanvas();
-      animFrameRef.current = requestAnimationFrame(render);
-    };
+    render(start);
+    return () => cancelAnimationFrame(frameId);
+  }, [isPlaying, mode, isPixelCoversMode, activePixelCover, coverUrl, coverImage, showSpotifyArtwork,
+    navy, pink, periwinkle, cream, trackTitle, artistName, reducedMotion, pixelResolution]);
 
-    render();
+  const art = showAnimatedGif ? (
+    <img src={coverUrl} alt="" className="w-full h-full object-contain pixelated pointer-events-none" />
+  ) : (
+    <canvas ref={canvasRef} width={240} height={240}
+      className="w-full h-full object-contain pixelated pointer-events-none" aria-hidden="true" />
+  );
+  const frameClass = 'relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden';
 
-    return () => {
-      if (animFrameRef.current) {
-        cancelAnimationFrame(animFrameRef.current);
-      }
-    };
-  }, [isPlaying, mode, isPixelCoversMode, activePixelCover, hasCoverLoaded, themeColors, trackTitle, artistName]);
-
-  // If in Pixel Covers mode and current shuffled cover is a retro animated GIF:
-  if (isPixelCoversMode && activePixelCover.type === 'gif' && activePixelCover.src) {
-    return (
-      <div
-        className="relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none cursor-pointer"
-        onClick={handleShuffleCover}
-        title={`Pixel Cover: ${activePixelCover.name} (Click to shuffle)`}
-      >
-        <img
-          src={activePixelCover.src}
-          alt={activePixelCover.name}
-          className="w-full h-full object-contain pixelated select-none pointer-events-none"
-          style={{ imageRendering: 'pixelated' }}
-        />
-      </div>
-    );
+  if (showSpotifyArtwork) {
+    const artwork = <img src={albumArtUrl} alt={`Cover art for ${trackTitle}`}
+      className="max-w-full max-h-full rounded object-contain" style={{ imageRendering: 'auto' }}
+      onError={() => setFailedArtworkUrl(albumArtUrl)} />;
+    return albumArtLink ? (
+      <a href={albumArtLink} target="_blank" rel="noopener noreferrer" className={`${frameClass} z-[41]`}>{artwork}</a>
+    ) : <div className={`${frameClass} z-[41]`}>{artwork}</div>;
   }
 
-  return (
-    <div
-      className={`relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden select-none ${
-        isPixelCoversMode ? 'cursor-pointer' : ''
-      }`}
-      onClick={handleShuffleCover}
-      title={isPixelCoversMode ? `Pixel Cover: ${activePixelCover.name} (Click to shuffle)` : undefined}
-    >
-      <canvas
-        ref={canvasRef}
-        width={240}
-        height={240}
-        className="w-full h-full object-contain pixelated select-none pointer-events-none"
-        style={{ imageRendering: 'pixelated' }}
-      />
-    </div>
-  );
+  return isPixelCoversMode ? (
+    <button type="button" className={frameClass} onClick={handleShuffleCover}
+      title={`Pixel Cover: ${activePixelCover.name}`} aria-label={`Shuffle pixel cover (current: ${activePixelCover.name})`}>
+      {art}
+    </button>
+  ) : <div className={frameClass}>{art}</div>;
+
 };
 
 // ==========================================

@@ -9,8 +9,6 @@ import {
   login as authLogin,
   logout as authLogout,
   getAccessToken,
-  refresh as authRefresh,
-  hasStoredSession,
   onSessionRevoked,
   handleWebAuthCallback,
 } from './spotifyAuth';
@@ -37,10 +35,10 @@ export * from './spotifyApi';
 export * from './spotifyAutoLaunch';
 
 // Username in-memory cache
-let cachedUserName: string = 'RABGON';
+let cachedUserName: string = 'SPOTIFY USER';
 
 export function getStoredUserName(): string {
-  return cachedUserName || 'RABGON';
+  return cachedUserName || 'SPOTIFY USER';
 }
 
 export function setStoredUserName(name: string) {
@@ -51,34 +49,43 @@ export function setStoredUserName(name: string) {
  * Validates the current Spotify session.
  * If a secure Keychain session exists, gets an in-memory access token and fetches the user profile.
  */
-export async function validateSpotifyToken(): Promise<{ valid: boolean; user?: string; needsScopeUpgrade?: boolean }> {
-  const hasSession = await hasStoredSession();
-  if (!hasSession) {
-    return { valid: false };
-  }
-
+export async function validateSpotifyToken(playbackVerified = false): Promise<{
+  valid: boolean;
+  user?: string;
+  needsScopeUpgrade?: boolean;
+  forbidden?: boolean;
+  error?: string;
+}> {
   try {
-    const token = await getAccessToken();
-    if (!token) {
-      return { valid: false };
-    }
+    if (!await getAccessToken()) return { valid: false };
 
-    const profile = await getUserProfile();
-    if (profile) {
-      const name = (profile.display_name || profile.id || 'SPOTIFY USER').toUpperCase();
-      cachedUserName = name;
-
-      // Verify that the token has user-library-read scope for Liked Songs
-      const tracksCheck = await spotifyRequest('GET', '/me/tracks?limit=1').catch(() => null);
-      if (tracksCheck && tracksCheck.status === 403) {
-        return { valid: false, user: name, needsScopeUpgrade: true };
+    if (!playbackVerified) {
+      const access = await spotifyRequest('GET', '/me/player/devices');
+      if (access.status === 403) {
+        const scopeMissing = /insufficient_scope/i.test(access.headers.get('WWW-Authenticate') || '');
+        return {
+          valid: false,
+          needsScopeUpgrade: scopeMissing,
+          forbidden: !scopeMissing,
+          error: scopeMissing
+            ? 'Reconnect Spotify and grant playback permissions.'
+            : 'Spotify denied playback access (403). Ask the app owner to allow your account or use your own Client ID in Spotify Setup.',
+        };
       }
-
-      return { valid: true, user: name };
+      if (!access.ok) {
+        return { valid: false, error: access.status === 429
+          ? 'Spotify is limiting requests. Wait a moment and try again.'
+          : 'Could not verify Spotify playback access. Try again in a moment.' };
+      }
     }
-  } catch (e) {}
 
-  return { valid: false };
+    const profile = await getUserProfile().catch(() => null);
+    const name = (profile?.display_name || profile?.id || 'SPOTIFY USER').toUpperCase();
+    cachedUserName = name;
+    return { valid: true, user: name };
+  } catch {
+    return { valid: false, error: 'Could not reach Spotify. Check your connection and try again.' };
+  }
 }
 
 /**
@@ -86,7 +93,7 @@ export async function validateSpotifyToken(): Promise<{ valid: boolean; user?: s
  */
 export async function clearSpotifyAuth() {
   await authLogout();
-  cachedUserName = 'RABGON';
+  cachedUserName = 'SPOTIFY USER';
 }
 
 /**
@@ -103,7 +110,7 @@ export function startSpotifyAutoRefreshLoop(): () => void {
   // Proactive 50-minute timer is already automatically managed inside spotifyAuth.ts!
   // We return a teardown hook here for component lifecycle compatibility.
   const unsubscribeRevocation = onSessionRevoked(() => {
-    cachedUserName = 'RABGON';
+    cachedUserName = 'SPOTIFY USER';
   });
 
   return () => {
@@ -141,5 +148,4 @@ export {
   getPlaylistTracks,
   getLikedSongs,
   getAlbumTracks,
-  loadAndPauseFirstLikedSong,
 } from './spotifyApi';

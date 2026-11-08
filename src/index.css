@@ -132,3 +132,80 @@ button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cu
   border: 2px solid #191244;
 }
 
+[data-motion="off"] *,
+[data-motion="off"] *::before,
+[data-motion="off"] *::after {
+  animation: none !important;
+  transition: none !important;
+}
+
+#root :is(button, a, input, select):focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: -2px;
+  box-shadow: inset 0 0 0 4px #191244;
+}
+
+.pixel-scrubber {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 16px;
+  background: transparent;
+}
+
+.pixel-scrubber::-webkit-slider-runnable-track {
+  height: 8px;
+  border: 2px solid var(--edge);
+  background: linear-gradient(to right, var(--fill) var(--progress), #fffdf5 var(--progress));
+}
+
+.pixel-scrubber::-moz-range-track {
+  height: 4px;
+  border: 2px solid var(--edge);
+  background: linear-gradient(to right, var(--fill) var(--progress), #fffdf5 var(--progress));
+}
+
+.pixel-scrubber::-webkit-slider-thumb {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border: 2px solid var(--edge);
+  background: var(--fill);
+}
+
+.pixel-scrubber::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 0;
+  border: 2px solid var(--edge);
+  background: var(--fill);
+}
+
+button:disabled, .pixel-scrubber:disabled {
+  opacity: 0.55;
+}
+
+[data-layout="portrait"] .player-body {
+  flex-direction: column;
+}
+
+[data-layout="portrait"] :is(.player-cover, .player-library) {
+  width: 100%;
+  height: 300px;
+}
+
+[data-layout="portrait"] .player-library {
+  border-right: 0;
+  border-bottom: 4px solid #191244;
+}
+
+[data-layout="portrait"] .player-controls {
+  width: 100%;
+  min-height: 0;
+  height: auto;
+}
+
+[data-layout="portrait"] .title-emojis {
+  display: none;
+}

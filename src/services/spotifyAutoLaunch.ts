@@ -64,32 +64,24 @@ export function isAutoLaunchEnabled(): boolean {
   return getAutoLaunchPermission() === 'allowed';
 }
 
-/**
- * Trigger background launch of Spotify Desktop App (minimized/hidden).
- * Uses Electron IPC when running in Electron app, or local auth server HTTP API in web preview.
- */
 export async function launchSpotifyInBackground(): Promise<boolean> {
-  // 1. Electron API
-  if (typeof window !== 'undefined' && window.electronAPI?.launchSpotifyInBackground) {
-    try {
-      const res = await window.electronAPI.launchSpotifyInBackground();
-      if (res) return true;
-    } catch (e) {
-      console.warn('[AutoLaunch] Electron IPC error:', e);
-    }
-  }
-
-  // 2. Local HTTP Server endpoint
   try {
-    const res = await fetch('http://127.0.0.1:8888/api/spotify/launch-background', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return Boolean(data.success);
-    }
-  } catch (e) {}
+    return await window.electronAPI?.launchSpotifyInBackground?.() ?? false;
+  } catch {
+    return false;
+  }
+}
 
-  return false;
+export async function openSpotifyApp(): Promise<'desktop' | 'web' | 'unavailable'> {
+  try {
+    if (window.electronAPI?.openSpotify) return await window.electronAPI.openSpotify();
+    const link = document.createElement('a');
+    link.href = 'https://open.spotify.com/';
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.click();
+    return 'web';
+  } catch {
+    return 'unavailable';
+  }
 }

@@ -1,19 +1,5 @@
-/**
- * Spotify PKCE Authentication Module
- * 
- * Requirements:
- * - Authorization Code Flow with PKCE (Client ID: 0e51fa9c7bfb4df7b72cfa5d72d87df0).
- * - No Client Secret required or used anywhere.
- * - Redirect URI: http://127.0.0.1:8888/callback
- * - Scopes: user-read-playback-state user-modify-playback-state user-read-currently-playing
- * - In-Memory Access Token ONLY (Never in localStorage, URLs, logs, or disk).
- * - Refresh Token stored securely in macOS Keychain (via Electron safeStorage) or local backend session.
- * - Single-flight refresh lock: concurrent calls share a single in-flight refresh promise.
- * - 50-minute proactive background refresh timer (3000s) so the token is always fresh.
- * - On invalid_grant: clears session and notifies UI to show non-blocking "Reconnect Spotify".
- */
-
-export const SPOTIFY_CLIENT_ID = '0e51fa9c7bfb4df7b72cfa5d72d87df0';
+// Spotify access tokens stay in memory. Desktop refresh tokens stay in the main process.
+export const SPOTIFY_CLIENT_ID = import.meta.env.VITE_SPOTIFY_CLIENT_ID || '0e51fa9c7bfb4df7b72cfa5d72d87df0';
 export const SPOTIFY_REDIRECT_URI = 'http://127.0.0.1:8888/callback';
 export const SPOTIFY_SCOPES = [
   'user-read-playback-state',
@@ -25,334 +11,191 @@ export const SPOTIFY_SCOPES = [
   'user-read-recently-played',
 ];
 
-// In-Memory Token Storage ONLY (Never logged or written to localStorage/disk)
-let inMemoryAccessToken: string | null = null;
-let inMemoryExpiresAt = 0; // Timestamp in milliseconds
+const REFRESH_KEY = 'spotify_web_refresh_token';
+const LOGIN_KEY = 'pixeltunes_spotify_login';
+const tokenEndpoint = 'https://accounts.spotify.com/api/token';
+type TokenResult = { access_token?: string; expires_in?: number; error?: string; refresh_token?: string };
 
-// Single-flight refresh lock / shared promise
-let activeRefreshPromise: Promise<string | null> | null = null;
+let accessToken: string | null = null;
+let expiresAt = 0;
+let sessionVersion = 0;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
+let activeRefresh: Promise<string | null> | null = null;
+let activeCallback: Promise<boolean> | null = null;
+const revocationListeners = new Set<() => void>();
 
-// 50-minute (3000s) proactive background refresh timer
-let proactiveRefreshTimer: ReturnType<typeof setInterval> | null = null;
-
-// Revocation listeners (for invalid_grant handling)
-type RevocationCallback = () => void;
-const revocationListeners = new Set<RevocationCallback>();
-
-export function onSessionRevoked(cb: RevocationCallback): () => void {
-  revocationListeners.add(cb);
-  return () => revocationListeners.delete(cb);
+export function onSessionRevoked(callback: () => void) {
+  revocationListeners.add(callback);
+  return () => { revocationListeners.delete(callback); };
 }
 
-function notifySessionRevoked() {
-  inMemoryAccessToken = null;
-  inMemoryExpiresAt = 0;
-  stopProactiveTimer();
-  revocationListeners.forEach((listener) => {
-    try { listener(); } catch (e) {}
-  });
+function clearAccessToken() {
+  sessionVersion++;
+  activeRefresh = null;
+  accessToken = null;
+  expiresAt = 0;
+  clearTimeout(refreshTimer);
 }
 
-function startProactiveTimer() {
-  stopProactiveTimer();
-  // 50 minutes = 3000 seconds = 3,000,000 ms
-  proactiveRefreshTimer = setInterval(async () => {
-    await refresh();
-  }, 3000 * 1000);
-}
-
-function stopProactiveTimer() {
-  if (proactiveRefreshTimer) {
-    clearInterval(proactiveRefreshTimer);
-    proactiveRefreshTimer = null;
+function setAccessToken(token: string, expiresIn = 3600, proactive = true) {
+  accessToken = token;
+  expiresAt = Date.now() + expiresIn * 1000;
+  clearTimeout(refreshTimer);
+  if (proactive) {
+    refreshTimer = setTimeout(() => { void refresh(); }, Math.max(1000, Math.min(3000, expiresIn - 60) * 1000));
   }
 }
 
-/**
- * Checks if a secure refresh token exists in the native Keychain / backend session.
- * The user logs in only once; if this returns true, no login screen is ever shown.
- */
-export async function hasStoredSession(): Promise<boolean> {
-  if (typeof window !== 'undefined' && window.electronAPI?.authHasSession) {
-    return await window.electronAPI.authHasSession();
-  }
-
-  // Web fallback: query local auth server or web refresh token
+function webRefreshToken() {
   try {
-    const res = await fetch('http://127.0.0.1:8888/api/auth/session');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.hasSession) return true;
+    return localStorage.getItem(REFRESH_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function getSpotifyRedirectUri() {
+  return window.electronAPI?.isElectron
+    ? SPOTIFY_REDIRECT_URI
+    : new URL(`${import.meta.env.BASE_URL === './' ? '/' : import.meta.env.BASE_URL}callback`, window.location.origin).href;
+}
+
+function base64url(bytes: Uint8Array) {
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+export async function login(clientId?: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (window.electronAPI?.authLogin) {
+      return await window.electronAPI.authLogin(clientId, {
+        theme: localStorage.getItem('pixeltunes_theme'),
+        motion: localStorage.getItem('pixeltunes_motion'),
+      });
     }
-  } catch (e) {}
-
-  if (typeof localStorage !== 'undefined' && Boolean(localStorage.getItem('spotify_web_refresh_token'))) {
-    return true;
-  }
-
-  return false;
-}
-
-function generateRandomString(length: number): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-  let str = '';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  for (let i = 0; i < length; i++) {
-    str += chars[bytes[i] % chars.length];
-  }
-  return str;
-}
-
-async function generateCodeChallenge(verifier: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(verifier);
-  const digest = await crypto.subtle.digest('SHA-256', data);
-  return btoa(String.fromCharCode(...new Uint8Array(digest)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/, '');
-}
-
-/**
- * Initiates the PKCE login flow.
- * Opens the system browser with the PKCE authorization URL.
- * User logs in once; the refresh token is saved securely in the macOS Keychain.
- */
-export async function login(): Promise<{ success: boolean; error?: string }> {
-  if (typeof window !== 'undefined' && window.electronAPI?.authLogin) {
-    return await window.electronAPI.authLogin();
-  }
-
-  // Check if local auth server is running (Electron / local dev)
-  let isLocal = false;
-  try {
-    const check = await fetch('http://127.0.0.1:8888/api/auth/session', { signal: AbortSignal.timeout(500) });
-    isLocal = check.ok;
-  } catch (e) {}
-
-  if (isLocal) {
-    window.open('http://127.0.0.1:8888/login', '_blank');
-    return { success: true };
-  }
-
-  // Pure Web Browser PKCE Flow (e.g. deployed on Vercel)
-  try {
-    const verifier = generateRandomString(64);
-    sessionStorage.setItem('spotify_pkce_verifier', verifier);
-    const challenge = await generateCodeChallenge(verifier);
-    const redirectUri = window.location.origin + (window.location.pathname.endsWith('/') ? '' : '/') + 'callback';
-    sessionStorage.setItem('spotify_redirect_uri', redirectUri);
-
+    const redirectUri = getSpotifyRedirectUri();
+    if (location.protocol !== 'https:' && !['127.0.0.1', '[::1]'].includes(location.hostname)) {
+      return { success: false, error: 'Open PixelTunes on HTTPS or http://127.0.0.1 to connect Spotify.' };
+    }
+    const verifier = base64url(crypto.getRandomValues(new Uint8Array(64)));
+    const state = base64url(crypto.getRandomValues(new Uint8Array(32)));
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier));
+    sessionStorage.setItem(LOGIN_KEY, JSON.stringify({ verifier, state, redirectUri, expiresAt: Date.now() + 300000 }));
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: SPOTIFY_CLIENT_ID,
       scope: SPOTIFY_SCOPES.join(' '),
       redirect_uri: redirectUri,
+      state,
       code_challenge_method: 'S256',
-      code_challenge: challenge,
+      code_challenge: base64url(new Uint8Array(digest)),
     });
-
-    window.location.href = `https://accounts.spotify.com/authorize?${params.toString()}`;
+    window.location.assign(`https://accounts.spotify.com/authorize?${params}`);
     return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message };
+  } catch {
+    return { success: false, error: 'Could not start Spotify authorization. Please retry.' };
   }
 }
 
-/**
- * Handle Web Auth Redirect Callback if '?code=' is present in browser URL
- */
-export async function handleWebAuthCallback(): Promise<boolean> {
-  if (typeof window === 'undefined') return false;
-  const urlParams = new URLSearchParams(window.location.search);
-  const code = urlParams.get('code');
-  if (!code) return false;
+async function requestToken(params: Record<string, string>): Promise<TokenResult> {
+  const response = await fetch(tokenEndpoint, {
+    method: 'POST',
+    body: new URLSearchParams({ client_id: SPOTIFY_CLIENT_ID, ...params }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json();
+  return response.ok ? data : { error: data.error || 'token_request_failed' };
+}
 
-  const verifier = sessionStorage.getItem('spotify_pkce_verifier');
-  const redirectUri = sessionStorage.getItem('spotify_redirect_uri') || window.location.origin + (window.location.pathname.endsWith('/') ? '' : '/') + 'callback';
+export function handleWebAuthCallback(): Promise<boolean> {
+  if (activeCallback) return activeCallback;
+  const params = new URLSearchParams(location.search);
+  if (window.electronAPI?.isElectron || location.pathname !== new URL(getSpotifyRedirectUri()).pathname ||
+      (!params.has('code') && !params.has('error'))) return Promise.resolve(false);
 
-  if (!verifier) return false;
-
-  try {
-    const res = await fetch('https://accounts.spotify.com/api/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
+  activeCallback = (async () => {
+    const version = sessionVersion;
+    try {
+      const pending = JSON.parse(sessionStorage.getItem(LOGIN_KEY) || 'null');
+      sessionStorage.removeItem(LOGIN_KEY);
+      if (!pending || pending.expiresAt <= Date.now() || pending.state !== params.get('state') ||
+          pending.redirectUri !== getSpotifyRedirectUri()) {
+        throw new Error('This Spotify authorization request is invalid or expired. Start again in PixelTunes.');
+      }
+      const code = params.get('code');
+      if (!code || params.has('error')) throw new Error('Spotify authorization was cancelled. You can retry.');
+      const data = await requestToken({
         grant_type: 'authorization_code',
         code,
-        redirect_uri: redirectUri,
-        client_id: SPOTIFY_CLIENT_ID,
-        code_verifier: verifier,
-      }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      inMemoryAccessToken = data.access_token;
-      inMemoryExpiresAt = Date.now() + (data.expires_in || 3600) * 1000;
-      if (data.refresh_token) {
-        localStorage.setItem('spotify_web_refresh_token', data.refresh_token);
-      }
-      startProactiveTimer();
-
-      window.history.replaceState({}, document.title, window.location.pathname);
-      sessionStorage.removeItem('spotify_pkce_verifier');
+        redirect_uri: pending.redirectUri,
+        code_verifier: pending.verifier,
+      });
+      if (!data.access_token) throw new Error('Spotify authorization failed. Check the app configuration and retry.');
+      if (version !== sessionVersion) return false;
+      clearAccessToken();
+      if (data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+      else localStorage.removeItem(REFRESH_KEY);
+      setAccessToken(data.access_token, data.expires_in);
       return true;
-    }
-  } catch (e) {
-    console.error('Web PKCE exchange failed:', e);
-  }
-  return false;
-}
-
-/**
- * Performs a silent, background token refresh using the Keychain-stored refresh token.
- * Single-flight: Multiple concurrent requests share the exact same refresh promise.
- * Playback and UI state continue completely uninterrupted with 0ms lag.
- */
-export async function refresh(): Promise<string | null> {
-  // If a refresh is already in-flight, await and share the existing promise
-  if (activeRefreshPromise) {
-    return activeRefreshPromise;
-  }
-
-  activeRefreshPromise = (async () => {
-    try {
-      let data: { access_token?: string; expires_in?: number; error?: string; refresh_token?: string } | null = null;
-
-      // 1. Electron Native Keychain Refresh
-      if (typeof window !== 'undefined' && window.electronAPI?.authRefresh) {
-        data = await window.electronAPI.authRefresh();
-      } else {
-        // 2. Web fallback to local server
-        try {
-          const res = await fetch('http://127.0.0.1:8888/api/auth/refresh');
-          data = await res.json().catch(() => null);
-        } catch (e) {}
-
-        // 3. Web direct refresh token fallback (e.g. Vercel)
-        if (!data?.access_token) {
-          const webRefreshToken = localStorage.getItem('spotify_web_refresh_token');
-          if (webRefreshToken) {
-            try {
-              const res = await fetch('https://accounts.spotify.com/api/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: new URLSearchParams({
-                  grant_type: 'refresh_token',
-                  refresh_token: webRefreshToken,
-                  client_id: SPOTIFY_CLIENT_ID,
-                }),
-              });
-              if (res.ok) {
-                const refreshed = await res.json();
-                data = refreshed;
-                if (refreshed?.refresh_token) {
-                  localStorage.setItem('spotify_web_refresh_token', refreshed.refresh_token);
-                }
-              }
-            } catch (e) {}
-          }
-        }
-      }
-
-      if (data && data.access_token) {
-        inMemoryAccessToken = data.access_token;
-        const expiresIn = data.expires_in || 3600;
-        inMemoryExpiresAt = Date.now() + expiresIn * 1000;
-        startProactiveTimer();
-        return inMemoryAccessToken;
-      }
-
-      // Handle invalid_grant (revoked refresh token)
-      if (data && data.error === 'invalid_grant') {
-        notifySessionRevoked();
-        return null;
-      }
-
-      return null;
-    } catch (err) {
-      return null;
     } finally {
-      activeRefreshPromise = null;
+      for (const key of ['code', 'state', 'error', 'error_description']) params.delete(key);
+      const search = params.toString();
+      history.replaceState(null, '', `/${search ? `?${search}` : ''}${location.hash}`);
     }
-  })();
-
-  return activeRefreshPromise;
+  })().finally(() => { activeCallback = null; });
+  return activeCallback;
 }
 
-/**
- * Returns a valid Spotify access token.
- * - If the token in memory is valid for more than 60 more seconds, returns it immediately.
- * - Otherwise silently refreshes in the background, then returns the new one.
- * - Never logs or exposes tokens.
- */
-export async function getAccessToken(): Promise<string | null> {
-  const now = Date.now();
-  // Valid for more than 60 seconds
-  if (inMemoryAccessToken && inMemoryExpiresAt - now > 60000) {
-    return inMemoryAccessToken;
-  }
-
-  return await refresh();
-}
-
-// Python / snake_case alias per requirements
-export const get_access_token = getAccessToken;
-
-/**
- * Logs out of Spotify.
- * Clears in-memory access token and wipes the refresh token from macOS Keychain.
- */
-export async function logout(): Promise<boolean> {
-  inMemoryAccessToken = null;
-  inMemoryExpiresAt = 0;
-  stopProactiveTimer();
-
-  // Clear legacy localStorage keys to ensure clean migration
-  try {
-    localStorage.removeItem('spotify_access_token');
-    localStorage.removeItem('spotify_refresh_token');
-    localStorage.removeItem('spotify_token_expires_at');
-    localStorage.removeItem('spotify_user_name');
-  } catch (e) {}
-
-  if (typeof window !== 'undefined' && window.electronAPI?.authLogout) {
-    return await window.electronAPI.authLogout();
-  }
-
-  try {
-    await fetch('http://127.0.0.1:8888/api/auth/logout');
-  } catch (e) {}
-
-  return true;
-}
-
-/**
- * Allows manual token injection strictly in memory (for debugging or tests)
- */
-export function setInMemoryTokenForTesting(token: string, expiresInSec: number = 3600) {
-  inMemoryAccessToken = token;
-  inMemoryExpiresAt = Date.now() + expiresInSec * 1000;
-}
-
-/**
- * Force-expires the in-memory token (for automated or manual verification tests)
- */
-export function forceExpireTokenForTesting() {
-  inMemoryExpiresAt = Date.now() - 1000;
-}
-
-// Automatically subscribe to Electron's token updates on initial login callback
-if (typeof window !== 'undefined' && window.electronAPI?.onAuthTokenUpdated) {
-  window.electronAPI.onAuthTokenUpdated((payload) => {
-    if (payload.access_token) {
-      inMemoryAccessToken = payload.access_token;
-      const expiresIn = payload.expires_in || 3600;
-      inMemoryExpiresAt = Date.now() + expiresIn * 1000;
-      startProactiveTimer();
+export function refresh(): Promise<string | null> {
+  if (activeRefresh) return activeRefresh;
+  const version = sessionVersion;
+  const promise = (async () => {
+    const nativeRefresh = window.electronAPI?.authRefresh;
+    const webToken = nativeRefresh ? null : webRefreshToken();
+    if (!nativeRefresh && !webToken) return null;
+    const data: TokenResult = nativeRefresh
+      ? await nativeRefresh()
+      : await requestToken({ grant_type: 'refresh_token', refresh_token: webToken! });
+    if (version !== sessionVersion) return null;
+    if (data.access_token) {
+      if (!nativeRefresh && data.refresh_token) localStorage.setItem(REFRESH_KEY, data.refresh_token);
+      setAccessToken(data.access_token, data.expires_in);
+      return data.access_token;
     }
+    if (data.error === 'invalid_grant' || (data.error === 'no_refresh_token' && accessToken)) {
+      if (!nativeRefresh) localStorage.removeItem(REFRESH_KEY);
+      clearAccessToken();
+      revocationListeners.forEach((listener) => listener());
+    }
+    return null;
+  })().catch(() => null).finally(() => {
+    if (activeRefresh === promise) activeRefresh = null;
   });
+  activeRefresh = promise;
+  return promise;
 }
 
+export async function getAccessToken(): Promise<string | null> {
+  if (accessToken && expiresAt - Date.now() > 60000) return accessToken;
+  return await refresh() ?? (expiresAt > Date.now() ? accessToken : null);
+}
+
+export async function logout() {
+  clearAccessToken();
+  for (const key of [REFRESH_KEY, 'spotify_access_token', 'spotify_refresh_token', 'spotify_token_expires_at',
+    'spotify_user_name', 'pixeltunes_user_id', 'pixeltunes_last_spotify_track', 'pixeltunes_liked_songs_cache']) {
+    try { localStorage.removeItem(key); } catch {}
+  }
+  try { sessionStorage.removeItem(LOGIN_KEY); } catch {}
+  return await window.electronAPI?.authLogout?.() ?? true;
+}
+
+export function setInMemoryTokenForTesting(token: string, expiresIn = 3600) {
+  clearAccessToken();
+  setAccessToken(token, expiresIn, false);
+}
+
+window.electronAPI?.onAuthTokenUpdated?.(({ access_token, expires_in }) => {
+  if (!access_token) return;
+  clearAccessToken();
+  setAccessToken(access_token, expires_in);
+});

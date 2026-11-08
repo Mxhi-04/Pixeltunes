@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import {
   login as authLogin,
-  clearSpotifyAuth,
   getSpotifyDevices,
   transferPlaybackSpotify,
-  validateSpotifyToken,
   setInMemoryTokenForTesting,
-  forceExpireTokenForTesting,
+  getSpotifyRedirectUri,
+  openSpotifyApp,
+  setStoredUserName,
+  playTrack,
+  addTrackToQueue,
+  playPlaylist,
 } from '../services/spotify';
 import { SpotifyDevice } from '../types/spotify';
+import { parseSpotifyLink } from '../services/spotifyLinks';
 import { playClickSound } from '../services/soundEffects';
 
 interface SpotifyModalProps {
@@ -16,8 +20,12 @@ interface SpotifyModalProps {
   onClose: () => void;
   isLoggedIn: boolean;
   userName: string;
+  authError: string;
+  authForbidden: boolean;
+  onRetryAuth: () => void;
   onLoginSuccess: () => void;
-  onLogout: () => void;
+  onLogout: () => Promise<void>;
+  onPlaybackStarted: () => Promise<void>;
 }
 
 export const SpotifyModal: React.FC<SpotifyModalProps> = ({
@@ -25,53 +33,41 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
   onClose,
   isLoggedIn,
   userName,
+  authError,
+  authForbidden,
+  onRetryAuth,
   onLoginSuccess,
   onLogout,
+  onPlaybackStarted,
 }) => {
   const [manualToken, setManualToken] = useState('');
+  const [clientId, setClientId] = useState('');
   const [isWaitingAuth, setIsWaitingAuth] = useState(false);
   const [devices, setDevices] = useState<SpotifyDevice[]>([]);
   const [statusMsg, setStatusMsg] = useState('');
   const [isError, setIsError] = useState(false);
-  const [showAdvancedOAuth, setShowAdvancedOAuth] = useState(false);
-  const [clientId, setClientId] = useState('');
+  const [linkInput, setLinkInput] = useState('');
+  const [linkStatus, setLinkStatus] = useState('');
+  const [linkPending, setLinkPending] = useState(false);
+  const spotifyLink = parseSpotifyLink(linkInput);
   const [copiedRedirect, setCopiedRedirect] = useState(false);
 
-  const isElectron = typeof window !== 'undefined' && Boolean(window.electronAPI?.isElectron);
 
   useEffect(() => {
     if (!isOpen) return;
 
     if (isLoggedIn) {
-      validateSpotifyToken().then(({ valid }) => {
-        if (!valid) {
-          clearSpotifyAuth();
-          onLogout();
-          setStatusMsg('Session was revoked. Please connect Spotify below.');
-          setIsError(true);
-        } else {
-          loadDevices();
-        }
-      });
+      setIsWaitingAuth(false);
+      loadDevices();
     }
-
-    // Auto-sync when browser auth completes
-    let unsubscribeUpdated: (() => void) | undefined;
-    if (window.electronAPI?.onAuthTokenUpdated) {
-      unsubscribeUpdated = window.electronAPI.onAuthTokenUpdated((payload) => {
-        setIsWaitingAuth(false);
-        const name = payload.user_name || 'SPOTIFY USER';
-        setStatusMsg(`★ Connected as ${name}!`);
-        setIsError(false);
-        onLoginSuccess();
-        setTimeout(() => onClose(), 800);
-      });
-    }
-
-    return () => {
-      if (unsubscribeUpdated) unsubscribeUpdated();
-    };
   }, [isOpen, isLoggedIn]);
+
+  useEffect(() => {
+    if (authError) {
+      setIsWaitingAuth(false);
+      setStatusMsg('');
+    }
+  }, [authError]);
 
   const loadDevices = async () => {
     const devList = await getSpotifyDevices();
@@ -114,13 +110,13 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
       const profile = await res.json();
       const name = (profile.display_name || profile.id || 'SPOTIFY USER').toUpperCase();
       setInMemoryTokenForTesting(cleaned, 3600);
+      setManualToken('');
+      setStoredUserName(name);
       setIsWaitingAuth(false);
       setStatusMsg(`Connected as ${name}! (In-memory testing session)`);
       setIsError(false);
       onLoginSuccess();
-      setTimeout(() => {
-        onClose();
-      }, 700);
+      onClose();
     } catch (err: any) {
       setIsWaitingAuth(false);
       setIsError(true);
@@ -130,10 +126,12 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
 
   const handleStartOAuthLogin = async () => {
     playClickSound();
+    onRetryAuth();
     setIsWaitingAuth(true);
-    setStatusMsg('Opening Spotify in your browser... Click "Agree" to link!');
+    setIsError(false);
+    setStatusMsg('Waiting for Spotify authorization in your browser.');
     try {
-      const res = await authLogin();
+      const res = await authLogin(clientId.trim() || undefined);
       if (!res.success && res.error) {
         setIsError(true);
         setStatusMsg(res.error);
@@ -148,13 +146,15 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
 
   const handleDisconnect = async () => {
     playClickSound();
-    await clearSpotifyAuth();
-    onLogout();
+    setStatusMsg('');
+    await onLogout();
   };
 
   const handleTransfer = async (deviceId: string) => {
     playClickSound();
-    await transferPlaybackSpotify(deviceId);
+    const transferred = await transferPlaybackSpotify(deviceId, false);
+    setStatusMsg(transferred ? 'Playback device changed.' : 'Could not transfer playback to this device.');
+    setIsError(!transferred);
     await loadDevices();
   };
 
@@ -163,9 +163,27 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
     onClose();
   };
 
-  const handleOpenSpotifyWeb = () => {
+  const handleOpenSpotify = async () => {
     playClickSound();
-    window.open('https://open.spotify.com', '_blank');
+    const opened = await openSpotifyApp();
+    setIsError(opened === 'unavailable');
+    setStatusMsg(opened === 'unavailable'
+      ? 'Could not open Spotify. Open it from Applications or use the web player.'
+      : 'Spotify opened. Start a song there, then refresh devices in PixelTunes.');
+    if (isLoggedIn) await loadDevices();
+  };
+
+  const handleSpotifyLink = async (addToQueue = false) => {
+    if (!spotifyLink || linkPending || !isLoggedIn) return;
+    setLinkPending(true);
+    setLinkStatus('Contacting Spotify…');
+    const success = addToQueue ? await addTrackToQueue(spotifyLink.uri)
+      : await (spotifyLink.type === 'track' ? playTrack(spotifyLink.uri) : playPlaylist(spotifyLink.uri));
+    setLinkPending(false);
+    setLinkStatus(success
+      ? (addToQueue ? 'Added to your Spotify queue.' : 'Playback started on your Spotify device.')
+      : 'Spotify could not complete this action. Check your Premium account and active device.');
+    if (success && !addToQueue) await onPlaybackStarted();
   };
 
   if (!isOpen) return null;
@@ -231,6 +249,35 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
           className="p-3.5 overflow-y-auto min-h-0 flex-1 space-y-3 text-[#191244] font-silkscreen text-xs app-no-drag"
           style={{ WebkitAppRegion: 'no-drag' as any }}
         >
+          <form onSubmit={(event) => { event.preventDefault(); void handleSpotifyLink(); }} className="bg-[#fffdf5] text-[#191244] border-2 border-[#191244] p-2 space-y-1.5 mb-2.5">
+            <label htmlFor="spotify-link" className="block font-pixel text-[10px] font-bold">SPOTIFY LINK OR URI</label>
+            <input id="spotify-link" value={linkInput} placeholder="https://open.spotify.com/track/…"
+              autoComplete="off" spellCheck={false} maxLength={2048} disabled={linkPending}
+              aria-describedby="spotify-link-help"
+              onChange={(event) => { setLinkInput(event.target.value); setLinkStatus(''); }}
+              className="w-full px-2 py-1 border border-[#191244] text-[10px] font-mono" />
+            <p id="spotify-link-help" className="font-silkscreen text-[8px]">
+              {linkInput.trim() && !spotifyLink ? 'Enter an open.spotify.com track, album, or playlist link, or a Spotify URI.'
+                : 'Paste a Spotify track, album, or playlist. Connect Spotify to play it on your device.'}
+            </p>
+            <div className="flex gap-2">
+              {isLoggedIn && <button type="submit" disabled={!spotifyLink || linkPending}
+                className="px-2 py-1 bg-[#9df0cf] border border-[#191244] font-pixel text-[8px]">PLAY LINK</button>}
+              {isLoggedIn && spotifyLink?.type === 'track' && (
+                <button type="button" disabled={linkPending} onClick={() => { void handleSpotifyLink(true); }}
+                  className="px-2 py-1 bg-[#ffd269] border border-[#191244] font-pixel text-[8px]">ADD TO QUEUE</button>
+              )}
+              {spotifyLink && <a href={spotifyLink.url} target="_blank" rel="noopener noreferrer"
+                className="px-2 py-1 bg-[#fec5db] border border-[#191244] font-pixel text-[8px]">OPEN IN SPOTIFY ↗</a>}
+            </div>
+            {linkStatus && <p role="status" className="font-pixel text-[8px]">{linkStatus}</p>}
+          </form>
+
+          <button type="button" onClick={handleOpenSpotify}
+            className="px-2 py-1 bg-[#9df0cf] border border-[#191244] font-pixel text-[8px]">
+            Open Spotify
+          </button>
+
           {isLoggedIn ? (
             /* Connected view */
             <div className="space-y-2.5">
@@ -246,6 +293,8 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                   DISCONNECT
                 </button>
               </div>
+
+              {statusMsg && <p role="status" className="text-xs text-[#191244]">{statusMsg}</p>}
 
               {/* Devices */}
               <div>
@@ -273,12 +322,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                         <br />
                         Open Spotify on your Mac and <strong>hit Play on any song</strong>!
                       </p>
-                      <button
-                        onClick={handleOpenSpotifyWeb}
-                        className="mt-1 px-2.5 py-1 bg-[#9df0cf] text-[#191244] font-pixel text-[8px] border border-[#191244] hover:bg-white cursor-pointer font-bold"
-                      >
-                        🌐 OPEN SPOTIFY WEB PLAYER
-                      </button>
+
                     </div>
                   ) : (
                     devices.map((device) => (
@@ -296,9 +340,9 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                             {device.type} {device.is_active ? '• [CURRENT PLAYING]' : ''}
                           </div>
                         </div>
-                        {!device.is_active && (
+                        {!device.is_active && !device.is_restricted && device.id && (
                           <button
-                            onClick={() => handleTransfer(device.id)}
+                            onClick={() => { if (device.id) void handleTransfer(device.id); }}
                             className="px-2 py-0.5 bg-[#fec5db] text-[#191244] border border-[#191244] text-[8px] hover:bg-[#ffe6f0] font-pixel"
                           >
                             TRANSFER
@@ -327,12 +371,25 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                 <div className="font-pixel text-[11px] text-[#9df0cf] tracking-wide font-bold">
                   ★ 1-CLICK SPOTIFY CONNECT ★
                 </div>
+                {window.electronAPI?.isElectron && (
+                  <details open={authForbidden || undefined} className="text-left border border-[#fec5db]/40 p-2 space-y-1.5">
+                    <summary className="cursor-pointer text-[#9df0cf] font-pixel text-[8px]">
+                      Use your own Spotify Client ID
+                    </summary>
+                    <label htmlFor="spotify-client-id" className="block font-silkscreen text-[9px]">Spotify Client ID</label>
+                    <input id="spotify-client-id" value={clientId} onChange={(event) => setClientId(event.target.value)}
+                      autoComplete="off" spellCheck={false} placeholder="32 characters from your Developer Dashboard"
+                      maxLength={64} className="w-full px-2 py-1 text-[#191244] bg-white border border-[#fec5db] font-mono text-[10px]" />
+                    <p className="font-silkscreen text-[8px] leading-relaxed">
+                      Add the redirect URI below to your Spotify app and sign in with an account that has access.
+                    </p>
+                  </details>
+                )}
                 <button
                   onClick={handleStartOAuthLogin}
-                  disabled={isWaitingAuth}
                   className="w-full py-2.5 px-3 bg-[#9df0cf] text-[#191244] font-pixel text-[11px] border-2 border-[#fffdf5] shadow-pixel hover:bg-[#b5f5db] active:translate-y-0.5 cursor-pointer font-bold tracking-wider"
                 >
-                  {isWaitingAuth ? 'WAITING FOR APPROVAL IN BROWSER...' : '⚡ CONNECT MY SPOTIFY'}
+                  {isWaitingAuth ? 'REOPEN SPOTIFY AUTHORIZATION' : '⚡ CONNECT MY SPOTIFY'}
                 </button>
 
                 {/* Redirect URI helper for 1-time setup */}
@@ -340,7 +397,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                   <div className="flex items-center justify-between text-[8px] text-[#ffd269] font-pixel">
                     <span>REDIRECT URI (ADD TO SPOTIFY DASHBOARD):</span>
                     <a
-                      href="https://developer.spotify.com/dashboard/0e51fa9c7bfb4df7b72cfa5d72d87df0/settings"
+                      href="https://developer.spotify.com/dashboard"
                       target="_blank"
                       rel="noreferrer"
                       className="underline text-[#9df0cf] hover:text-white"
@@ -350,13 +407,16 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                   </div>
                   <div className="flex items-center gap-1.5">
                     <code className="text-[9px] font-mono bg-black/60 px-1.5 py-0.5 text-[#fffdf5] flex-1 select-all">
-                      http://127.0.0.1:8888/callback
+                      {getSpotifyRedirectUri()}
                     </code>
                     <button
-                      onClick={() => {
-                        navigator.clipboard.writeText('http://127.0.0.1:8888/callback');
-                        setCopiedRedirect(true);
-                        setTimeout(() => setCopiedRedirect(false), 2000);
+                      onClick={async () => {
+                        try {
+                          await navigator.clipboard.writeText(getSpotifyRedirectUri());
+                          setCopiedRedirect(true);
+                        } catch {
+                          setStatusMsg('Select and copy the redirect URI above.');
+                        }
                       }}
                       className="px-2 py-0.5 bg-[#fec5db] text-[#191244] text-[8px] font-pixel border border-[#191244] hover:bg-white cursor-pointer"
                     >
@@ -367,15 +427,15 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
               </div>
 
               {/* Status Message */}
-              {statusMsg && (
-                <div
+              {(authError || statusMsg) && (
+                <div role="status"
                   className={`p-2 border-2 text-[9px] font-pixel text-center leading-relaxed ${
-                    isError
+                    authError || isError
                       ? 'bg-[#ff7b90] text-[#191244] border-[#191244]'
                       : 'bg-[#191244] text-[#ffd269] border-[#191244]'
                   }`}
                 >
-                  {statusMsg}
+                  {authError || statusMsg}
                 </div>
               )}
 
@@ -399,7 +459,9 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                 </p>
                 <div className="flex gap-1.5">
                   <input
-                    type="text"
+                    type="password"
+                    aria-label="Spotify API token"
+                    autoComplete="off"
                     value={manualToken}
                     onChange={(e) => setManualToken(e.target.value)}
                     placeholder="Paste token (starts with BQ...)"
@@ -407,7 +469,7 @@ export const SpotifyModal: React.FC<SpotifyModalProps> = ({
                   />
                   <button
                     onClick={handleManualTokenSubmit}
-                    disabled={isWaitingAuth}
+                    disabled={!manualToken.trim()}
                     className="px-2.5 py-1 bg-[#fec5db] text-[#191244] font-pixel text-[9px] border border-[#191244] hover:bg-[#ffe6f0] cursor-pointer font-bold"
                   >
                     SUBMIT

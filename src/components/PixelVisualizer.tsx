@@ -3,13 +3,13 @@ import { lofiEngine } from '../services/lofiAudio';
 
 interface PixelVisualizerProps {
   isPlaying: boolean;
-  isSpotifyActive: boolean;
+  reducedMotion: boolean;
   barCount?: number;
 }
 
 export const PixelVisualizer: React.FC<PixelVisualizerProps> = ({
   isPlaying,
-  isSpotifyActive,
+  reducedMotion,
   barCount = 16,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -21,8 +21,7 @@ export const PixelVisualizer: React.FC<PixelVisualizerProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let dummyFreqs = new Array(barCount).fill(0);
-    const analyser = !isSpotifyActive ? lofiEngine.getAnalyser() : null;
+    const analyser = isPlaying ? lofiEngine.getAnalyser() : null;
     const dataArray = analyser ? new Uint8Array(analyser.frequencyBinCount) : null;
 
     const render = () => {
@@ -32,26 +31,10 @@ export const PixelVisualizer: React.FC<PixelVisualizerProps> = ({
       const blockWidth = Math.floor(canvas.width / barCount) - 2;
       const maxBlocks = Math.floor(canvas.height / (blockHeight + 1));
 
+      if (analyser && dataArray && !reducedMotion) analyser.getByteFrequencyData(dataArray);
       for (let i = 0; i < barCount; i++) {
-        let value = 0;
-
-        if (isPlaying) {
-          if (analyser && dataArray) {
-            analyser.getByteFrequencyData(dataArray);
-            const index = Math.min(dataArray.length - 1, Math.floor(i * 1.5));
-            value = dataArray[index] / 255;
-          } else {
-            // Simulated rhythmic pulse for Spotify playback
-            const t = Date.now() / 200;
-            const target = 0.3 + 0.5 * Math.abs(Math.sin(t * (1 + (i % 3) * 0.4) + i));
-            dummyFreqs[i] += (target - dummyFreqs[i]) * 0.25;
-            value = dummyFreqs[i];
-          }
-        } else {
-          // Slowly decay to 0
-          dummyFreqs[i] *= 0.85;
-          value = dummyFreqs[i];
-        }
+        const index = dataArray ? Math.min(dataArray.length - 1, Math.floor(i * 1.5)) : 0;
+        const value = dataArray ? dataArray[index] / 255 : 0;
 
         const activeBlocks = Math.floor(value * maxBlocks);
 
@@ -77,7 +60,7 @@ export const PixelVisualizer: React.FC<PixelVisualizerProps> = ({
         }
       }
 
-      animFrameRef.current = requestAnimationFrame(render);
+      if (isPlaying && !reducedMotion) animFrameRef.current = requestAnimationFrame(render);
     };
 
     render();
@@ -87,12 +70,13 @@ export const PixelVisualizer: React.FC<PixelVisualizerProps> = ({
         cancelAnimationFrame(animFrameRef.current);
       }
     };
-  }, [isPlaying, isSpotifyActive, barCount]);
+  }, [isPlaying, reducedMotion, barCount]);
 
   return (
     <div className="w-full h-7 flex items-center justify-center select-none">
       <canvas
         ref={canvasRef}
+        aria-hidden="true"
         width={180}
         height={24}
         className="w-full h-full pixelated"

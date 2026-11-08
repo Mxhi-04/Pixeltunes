@@ -1,365 +1,223 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { PixelSaturnIcon } from './PixelSaturnIcon';
-import {
-  getCurrentlyPlaying,
-  playTrack,
-  getLikedSongs,
-} from '../services/spotify';
+import { getLikedSongs, getQueue, getUserPlaylists, playPlaylist, playTrack } from '../services/spotify';
+import { BUILTIN_TRACKS } from '../services/lofiAudio';
 import { playClickSound } from '../services/soundEffects';
+import { getSpotifyItemUrl } from '../services/spotifyLinks';
+import type { SpotifyPlaybackState, SpotifyPlaylist, SpotifyTrack } from '../types/spotify';
 
 interface RetroQueueViewProps {
   isSpotifyConnected: boolean;
   onClose: () => void;
-  onOpenSpotifyModal?: () => void;
-  onTrackPlayed?: (track?: any) => void;
-  currentTrackTitle?: string;
-  initialLikedTrack?: any;
-  initialLikedList?: any[];
+  onOpenSpotifyModal: (opener: HTMLElement) => void;
+  onTrackPlayed: () => void;
+  currentTrack?: SpotifyPlaybackState['item'];
+  currentBuiltinId?: string;
+  onBuiltinSelect: (index: number) => void;
 }
 
-export const RetroQueueView: React.FC<RetroQueueViewProps> = ({
-  isSpotifyConnected,
-  onClose,
-  onOpenSpotifyModal,
-  onTrackPlayed,
-  currentTrackTitle,
-  initialLikedTrack,
-  initialLikedList,
-}) => {
-  // Master list of user's Liked Songs - playlist is strictly limited to Liked Songs
-  const [allLikedTracks, setAllLikedTracks] = useState<any[]>(() => {
-    if (initialLikedList && initialLikedList.length > 0) {
-      return initialLikedList;
-    }
-    try {
-      const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
-    return [];
-  });
+function formatTime(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
 
-  const [queueTracks, setQueueTracks] = useState<any[]>(() => {
-    if (initialLikedList && initialLikedList.length > 0) {
-      return initialLikedList;
-    }
-    try {
-      const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
-      if (cached) {
-        return JSON.parse(cached);
-      }
-    } catch {}
-    return [];
-  });
+export function RetroQueueView({
+  isSpotifyConnected, onClose, onOpenSpotifyModal, onTrackPlayed, currentTrack, currentBuiltinId, onBuiltinSelect,
+}: RetroQueueViewProps) {
+  const [tracks, setTracks] = useState<SpotifyTrack[]>([]);
+  const [queue, setQueue] = useState<Awaited<ReturnType<typeof getQueue>>['queue']>([]);
+  const [playlists, setPlaylists] = useState<SpotifyPlaylist[]>([]);
+  const [playlistOffset, setPlaylistOffset] = useState(0);
+  const [nextOffset, setNextOffset] = useState<number | null>(null);
+  const [list, setList] = useState<'playlists' | 'liked' | 'queue'>('playlists');
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+  const [pendingTrack, setPendingTrack] = useState<string | null>(null);
+  const [status, setStatus] = useState('');
 
-  const [currentlyPlaying, setCurrentlyPlaying] = useState<any | null>(() => {
-    return initialLikedTrack || null;
-  });
-
-  const [isLoading, setIsLoading] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const [activePlayingUri, setActivePlayingUri] = useState<string | null>(null);
-
-  // Sync when initialLikedList updates
   useEffect(() => {
-    if (initialLikedList && initialLikedList.length > 0) {
-      setAllLikedTracks(initialLikedList);
-      setQueueTracks(initialLikedList);
+    let cancelled = false;
+    if (!isSpotifyConnected) {
+      setTracks([]);
+      setQueue([]);
+      setPlaylists([]);
+      setPlaylistOffset(0);
+      setNextOffset(null);
+      setList('playlists');
+      setStatus('');
+      setPendingTrack(null);
+      return;
     }
-  }, [initialLikedList]);
-
-  // Sync when initialLikedTrack updates
-  useEffect(() => {
-    if (initialLikedTrack) {
-      setCurrentlyPlaying(initialLikedTrack);
-    } else {
-      setCurrentlyPlaying(null);
-    }
-  }, [initialLikedTrack]);
-
-  // Fetch strictly and ONLY Liked Songs - never switch to song author or album!
-  const fetchQueue = useCallback(async () => {
-    if (!isSpotifyConnected) return;
-    try {
-      // 1. Sync currently playing track ONLY when actively playing
-      const current = await getCurrentlyPlaying().catch(() => null);
-      if (current?.is_playing && current?.item) {
-        setCurrentlyPlaying(current.item);
+    setLoading(true);
+    setLoadError(false);
+    const load = async () => {
+      if (list === 'playlists') {
+        const page = await getUserPlaylists(playlistOffset);
+        if (cancelled) return;
+        setPlaylists((previous) => {
+          const combined = playlistOffset ? [...previous, ...page.playlists] : page.playlists;
+          return [...new Map(combined.map((playlist) => [playlist.id, playlist])).values()];
+        });
+        setNextOffset(page.nextOffset);
+      } else if (list === 'liked') {
+        const liked = await getLikedSongs();
+        if (!cancelled) setTracks(liked);
+      } else {
+        const result = await getQueue();
+        if (!cancelled) setQueue(result.queue);
       }
+    };
+    load().catch(() => {
+      if (!cancelled) setLoadError(true);
+    }).finally(() => {
+      if (!cancelled) setLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [isSpotifyConnected, refreshCount, list, playlistOffset]);
 
-      // 2. Fetch authoritative Liked Songs playlist
-      const liked = await getLikedSongs(50);
-      if (liked && liked.length > 0) {
-        setAllLikedTracks(liked);
-        setQueueTracks(liked);
-        try {
-          localStorage.setItem('pixeltunes_liked_songs_cache', JSON.stringify(liked));
-        } catch {}
-        return;
-      }
-
-      // 3. Fallback to cache if network is slow/offline
-      try {
-        const cached = localStorage.getItem('pixeltunes_liked_songs_cache');
-        if (cached) {
-          const list = JSON.parse(cached);
-          if (list.length > 0) {
-            setAllLikedTracks(list);
-            setQueueTracks(list);
-            return;
-          }
-        }
-      } catch {}
-    } catch (e) {
-      console.error('Failed to fetch Liked Songs queue:', e);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isSpotifyConnected]);
-
-  // Initial fetch & refetch on song title change
-  useEffect(() => {
-    setIsLoading(true);
-    fetchQueue();
-  }, [fetchQueue, currentTrackTitle]);
-
-  // Periodic polling to keep Liked Songs list fresh
-  useEffect(() => {
-    if (!isSpotifyConnected) return;
-    const interval = setInterval(() => {
-      fetchQueue();
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [isSpotifyConnected, fetchQueue]);
-
-  const handlePlaySong = async (track: any) => {
+  const playEntry = async (uri: string, play: () => Promise<boolean>, itemType: 'track' | 'playlist') => {
     playClickSound();
-    setActivePlayingUri(track.uri);
-    setCurrentlyPlaying(track);
-    setStatusMsg(`▶ Playing: ${track.name.slice(0, 16)}...`);
-
-    // Instantly notify parent RetroWindow to display this song on Pixeltunes
-    if (onTrackPlayed) {
-      onTrackPlayed(track);
-    }
-    try {
-      localStorage.setItem('pixeltunes_last_spotify_track', JSON.stringify(track));
-    } catch {}
-
-    // Find subsequent tracks in Liked Songs to queue up
-    const trackList = allLikedTracks.length > 0 ? allLikedTracks : queueTracks;
-    const trackIdx = trackList.findIndex(
-      (t) => (t.id && t.id === track.id) || (t.uri && t.uri === track.uri)
-    );
-    const subsequentTracks = trackIdx !== -1
-      ? trackList.slice(trackIdx + 1)
-      : trackList.filter((t) => t.uri !== track.uri);
-    const remainingUris = subsequentTracks.map((t) => t.uri).filter(Boolean);
-
-    // Play silently via Web API (never pop up Spotify window)
-    const success = await playTrack(track.uri, undefined, remainingUris);
-    if (success) {
-      setTimeout(() => {
-        setStatusMsg(null);
-      }, 1500);
-    } else {
-      setStatusMsg('Starting playback...');
-      setTimeout(() => {
-        setStatusMsg(null);
-      }, 2000);
-    }
+    setPendingTrack(uri);
+    setStatus('Contacting Spotify…');
+    const success = await play();
+    setPendingTrack(null);
+    setStatus(success ? '' : `Could not play this ${itemType}. Check your Spotify device and Premium access.`);
+    if (success) onTrackPlayed();
   };
 
-  const formatMs = (ms: number) => {
-    const totalSec = Math.floor(ms / 1000);
-    const m = Math.floor(totalSec / 60);
-    const s = totalSec % 60;
-    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  const labels = { playlists: 'Spotify playlists', liked: 'Liked songs', queue: 'Spotify queue' };
+  const selectList = (next: typeof list) => {
+    if (next === list) return;
+    setPlaylistOffset(0);
+    setNextOffset(null);
+    setLoadError(false);
+    setList(next);
+    setStatus('');
   };
+  const entries = isSpotifyConnected
+    ? (list === 'playlists' ? playlists.map((playlist) => ({
+      id: playlist.uri, name: playlist.name, artist: playlist.owner?.display_name || 'Spotify playlist',
+      duration: null, selected: false, url: getSpotifyItemUrl(playlist.uri),
+    })) : (list === 'liked' ? tracks : queue).map((track) => ({
+      id: track.uri, name: track.name, artist: track.artists?.map(({ name }) => name).join(', ') ||
+        ('show' in track ? track.show?.name : undefined),
+      duration: track.duration_ms, selected: list === 'liked' && track.uri === currentTrack?.uri,
+      url: getSpotifyItemUrl(track.uri),
+    })))
+    : BUILTIN_TRACKS.map((track) => ({
+      id: track.id, name: track.name, artist: track.artist, duration: track.duration * 1000, url: undefined,
+      selected: track.id === currentBuiltinId,
+    }));
 
   return (
-    <div className="w-full h-full bg-[#fffdf5] flex flex-col overflow-hidden text-[#191244] select-none">
-      {/* Top Header Bar */}
-      <div className="h-7 bg-[#fec5db] border-b-2 border-[#191244] px-2 flex items-center justify-between select-none shrink-0">
+    <section aria-label={isSpotifyConnected ? labels[list] : 'Lo-fi library'}
+      className="w-full h-full bg-[#fffdf5] flex flex-col overflow-hidden text-[#191244] select-none">
+      <div className="h-7 bg-[#fec5db] border-b-2 border-[#191244] px-2 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-1.5 min-w-0">
           <PixelSaturnIcon className="w-5 h-3.5 shrink-0" />
-          <span className="font-pixel text-[8px] font-bold tracking-wider text-[#191244] truncate">
-            LIKED SONGS {allLikedTracks.length > 0 ? `(${allLikedTracks.length})` : queueTracks.length > 0 ? `(${queueTracks.length})` : ''}
+          <span className="font-pixel text-[8px] font-bold truncate">
+            {isSpotifyConnected ? ({
+              playlists: `PLAYLISTS (${playlists.length})`, liked: `LIKED SONGS (${tracks.length})`, queue: 'SPOTIFY QUEUE',
+            })[list] : 'LO-FI LIBRARY'}
           </span>
         </div>
-
-        <div className="flex items-center gap-1 shrink-0">
-          {/* Switch to Album Cover Button */}
-          <button
-            data-testid="toggle-cover-btn"
-            onClick={() => {
-              playClickSound();
-              onClose();
-            }}
-            title="Return to Album Cover"
-            className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[7px] font-pixel flex items-center gap-1 hover:bg-[#ff7b90] active:translate-y-0.5 cursor-pointer font-bold leading-none"
-          >
-            <span>🖼</span>
-            <span>COVER</span>
-          </button>
-        </div>
+        <button data-testid="toggle-cover-btn" onClick={onClose}
+          className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[7px] font-pixel hover:bg-[#9df0cf]">
+          COVER
+        </button>
       </div>
 
-      {/* Mini Status Toast */}
-      {statusMsg && (
-        <div className="bg-[#ffd269] px-2 py-0.5 text-[7px] font-pixel text-center border-b border-[#191244] truncate animate-pulse shrink-0">
-          {statusMsg}
+      {isSpotifyConnected && (
+        <div className="flex items-center justify-between gap-1 px-2 py-1 text-[8px] font-pixel border-b border-[#191244]">
+          <div className="flex gap-1.5">
+            <button aria-pressed={list === 'playlists'} onClick={() => selectList('playlists')} className="underline aria-pressed:font-bold">Playlists</button>
+            <button aria-pressed={list === 'liked'} onClick={() => selectList('liked')} className="underline aria-pressed:font-bold">Liked songs</button>
+            <button aria-pressed={list === 'queue'} onClick={() => selectList('queue')} className="underline aria-pressed:font-bold">Up next</button>
+          </div>
+          <button type="button" aria-label="Refresh" title="Refresh" disabled={loading} onClick={() => {
+            setPlaylistOffset(0);
+            setNextOffset(null);
+            setRefreshCount((count) => count + 1);
+          }} className="px-1 text-xs">↻</button>
         </div>
       )}
+      {currentTrack && isSpotifyConnected && (
+        <p className="bg-[#9df0cf] border-b-2 border-[#191244] px-2 py-1.5 font-pixel text-[8px] truncate">
+          Selected in Spotify · {currentTrack.name}
+        </p>
+      )}
+      {(status || loadError) && isSpotifyConnected && (
+        <p role="status" className="bg-[#ffd269] px-2 py-1 font-pixel text-[8px]">
+          {status || `Could not load ${list === 'liked' ? 'Liked Songs' : labels[list]}. Try refreshing.`}
+        </p>
+      )}
 
-      {/* Main Content Area */}
-      {isSpotifyConnected ? (
-        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {/* Currently Playing Pinned Row */}
-          {currentlyPlaying && (
-            <div className="bg-[#9df0cf] border-b-2 border-[#191244] px-2 py-1.5 shrink-0">
-              <div className="flex items-center justify-between mb-0.5">
-                <span className="font-pixel text-[6.5px] font-bold text-[#191244] tracking-wider">
-                  ▶ NOW PLAYING:
-                </span>
-                {currentlyPlaying.duration_ms && (
-                  <span className="font-silkscreen text-[6.5px] font-bold text-[#191244]/80">
-                    {formatMs(currentlyPlaying.duration_ms)}
-                  </span>
-                )}
-              </div>
-              <div className="font-pixel text-[8px] font-bold truncate text-[#191244]">
-                {currentlyPlaying.name}
-              </div>
-              <div className="font-silkscreen text-[7px] text-[#191244]/80 truncate">
-                {currentlyPlaying.artists?.map((a: any) => a.name).join(', ')}
-              </div>
-            </div>
-          )}
-
-          {/* Scrollable Tracks List */}
-          <div
-            className="flex-1 overflow-y-auto min-h-0 divide-y divide-[#191244]/15 bg-[#fffdf5]"
-            style={{
-              scrollbarWidth: 'thin',
-              scrollbarColor: '#191244 #ffe6f0',
-            }}
-          >
-            {isLoading && queueTracks.length === 0 ? (
-              <div className="flex items-center justify-center h-full py-12 text-center">
-                <span className="font-pixel text-[8px] text-[#191244]/70 animate-pulse">
-                  LOADING PLAYLIST...
-                </span>
-              </div>
-            ) : queueTracks.length > 0 ? (
-              queueTracks.map((track, i) => {
-                const isSelected =
-                  Boolean(currentlyPlaying) &&
-                  (activePlayingUri === track.uri ||
-                    currentlyPlaying?.uri === track.uri ||
-                    (currentlyPlaying?.name && currentlyPlaying?.name === track.name));
-                return (
-                  <div
-                    key={`${track.id || track.uri}-${i}`}
-                    onClick={() => handlePlaySong(track)}
-                    className={`px-2 py-1.5 flex items-center justify-between gap-1.5 cursor-pointer transition-colors group ${
-                      isSelected
-                        ? 'bg-[#ffd269]'
-                        : 'hover:bg-[#fec5db]/45 bg-[#fffdf5]'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                      <span className="font-pixel text-[7px] text-[#8fa2d4] w-3.5 shrink-0 text-left">
-                        {i + 1 < 10 ? `0${i + 1}` : i + 1}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <div className="font-pixel text-[7.5px] font-bold truncate text-[#191244] group-hover:text-[#ff7b90] transition-colors">
-                          {track.name}
-                        </div>
-                        <div className="font-silkscreen text-[6.5px] text-[#191244]/70 truncate">
-                          {track.artists?.map((a: any) => a.name).join(', ')}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <span className="font-silkscreen text-[6.5px] text-[#191244]/60">
-                        {track.duration_ms ? formatMs(track.duration_ms) : ''}
-                      </span>
-                      <span className="font-pixel text-[7px] text-[#191244] opacity-0 group-hover:opacity-100 transition-opacity">
-                        ▶
-                      </span>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div className="p-3 text-center space-y-2 py-10">
-                <div className="font-pixel text-[8px] text-[#191244] font-bold">
-                  NO LIKED SONGS FOUND
-                </div>
-                <div className="font-silkscreen text-[7px] text-[#191244]/75 leading-relaxed">
-                  Like songs in Spotify to see and control them here!
-                </div>
-                <div className="pt-2 flex flex-col items-center gap-1.5">
-                  <button
-                    onClick={() => {
-                      playClickSound();
-                      setIsLoading(true);
-                      fetchQueue();
-                    }}
-                    className="px-2.5 py-1 bg-[#9df0cf] text-[#191244] border-2 border-[#191244] font-pixel text-[7.5px] hover:bg-white active:translate-y-0.5 font-bold cursor-pointer shadow-pixel-sm"
-                  >
-                    ↻ RELOAD LIKED SONGS
-                  </button>
-                  <button
-                    onClick={() => {
-                      playClickSound();
-                      onClose();
-                    }}
-                    className="px-2 py-0.5 bg-[#fffdf5] border border-[#191244] font-pixel text-[7px] hover:bg-[#fec5db] cursor-pointer"
-                  >
-                    🖼 VIEW COVER
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      ) : (
-        /* Disconnected State */
-        <div className="flex-1 flex flex-col items-center justify-center p-3 text-center space-y-2.5">
-          <div className="font-pixel text-[8px] text-[#191244] font-bold">
-            SPOTIFY OFFLINE
-          </div>
-          <p className="font-silkscreen text-[7px] text-[#191244]/75 leading-relaxed">
-            Connect Spotify to view and control your playlist.
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {loading && !entries.length && <p role="status" className="p-3 font-pixel text-[8px]">Loading…</p>}
+        {!loading && !loadError && !entries.length && (
+          <p className="p-3 font-pixel text-[8px]">
+            {list === 'playlists' ? 'Save or create a playlist in Spotify to see it here.'
+              : list === 'liked' ? 'Like a track in Spotify to see it here.' : 'The Spotify queue is empty.'}
           </p>
-          {onOpenSpotifyModal && (
-            <button
-              onClick={() => {
-                playClickSound();
-                onOpenSpotifyModal();
-              }}
-              className="px-2 py-1 bg-[#9df0cf] text-[#191244] border-2 border-[#191244] font-pixel text-[7.5px] hover:bg-white active:translate-y-0.5 font-bold cursor-pointer shadow-pixel-sm"
-            >
-              + CONNECT SPOTIFY
-            </button>
-          )}
-          <button
-            onClick={() => {
-              playClickSound();
-              onClose();
-            }}
-            className="px-2 py-0.5 bg-[#fffdf5] border border-[#191244] font-pixel text-[7px] hover:bg-[#fec5db] cursor-pointer"
-          >
-            🖼 RETURN TO COVER
+        )}
+        {entries.map((entry, index) => {
+          const label = (
+            <>
+              <span className="font-pixel text-[8px] text-[#4a3e77]">{String(index + 1).padStart(2, '0')}</span>
+              <span className="flex-1 min-w-0">
+                <span className="block font-pixel text-[9px] font-bold truncate" title={entry.name}>{entry.name}</span>
+                <span className="block font-silkscreen text-[8px] truncate" title={entry.artist}>{entry.artist}</span>
+              </span>
+              <span className="font-silkscreen text-[8px]">{entry.duration === null ? '▶' : formatTime(entry.duration)}</span>
+            </>
+          );
+          const rowClass = `w-full px-2 py-2 flex items-center gap-2 text-left ${entry.selected ? 'bg-[#ffd269]' : 'hover:bg-[#fec5db]/60'}`;
+
+          return (
+            <div key={`${entry.id}-${index}`} className="flex border-b border-[#191244]/15">
+              {isSpotifyConnected && list === 'queue' ? (
+                <div className={rowClass}>{label}</div>
+              ) : (
+                <button type="button" aria-current={entry.selected ? 'true' : undefined} disabled={Boolean(pendingTrack)}
+                  aria-label={isSpotifyConnected && list === 'playlists' ? `Play ${entry.name}` : undefined}
+                  onClick={() => {
+                    if (!isSpotifyConnected) onBuiltinSelect(index);
+                    else if (list === 'playlists') void playEntry(entry.id, () => playPlaylist(entry.id), 'playlist');
+                    else void playEntry(entry.id, () => playTrack(entry.id, undefined, tracks.slice(index + 1).map(({ uri }) => uri)), 'track');
+                  }}
+                  className={rowClass}>{label}</button>
+              )}
+              {entry.url && (
+                <a href={entry.url} target="_blank" rel="noopener noreferrer" aria-label={`Open ${entry.name} in Spotify`}
+                  className="px-2 flex items-center text-xs hover:bg-[#fec5db]/60">↗</a>
+              )}
+            </div>
+          );
+        })}
+        {isSpotifyConnected && list === 'playlists' && nextOffset !== null && (
+          <button type="button" disabled={loading} onClick={() => {
+            if (loadError && playlistOffset === nextOffset) setRefreshCount((count) => count + 1);
+            else setPlaylistOffset(nextOffset);
+          }} className="w-full px-2 py-2 font-pixel text-[8px] underline">
+            {loading ? 'Loading…' : loadError ? 'Retry loading playlists' : 'Load more playlists'}
           </button>
-        </div>
+        )}
+      </div>
+
+      {isSpotifyConnected && (
+        <a href="https://open.spotify.com" target="_blank" rel="noopener noreferrer"
+          className="self-start px-2 py-1" title="Open Spotify">
+          <img src="./spotify-logo.svg" alt="Spotify" className="w-[110px] h-auto" style={{ imageRendering: 'auto' }} />
+        </a>
       )}
-    </div>
+      {!isSpotifyConnected && (
+        <button onClick={(event) => onOpenSpotifyModal(event.currentTarget)} className="m-2 px-2 py-1 bg-[#9df0cf] border border-[#191244] font-pixel text-[8px]">
+          + CONNECT SPOTIFY
+        </button>
+      )}
+    </section>
   );
-};
+}
 
 export default RetroQueueView;
