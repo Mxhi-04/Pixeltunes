@@ -50,8 +50,10 @@ npm run dev
 
 ### Desktop App (macOS Electron)
 ```bash
-npm run electron
-# or for full production build
+# Development mode (starts Vite dev server + Electron with live reload):
+npm run electron:dev
+
+# Production mode (builds dist and launches):
 npm run app
 ```
 

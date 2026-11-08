@@ -637,6 +637,35 @@ function createWindow() {
   const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
   const forceDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
 
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    if (validatedURL && (validatedURL.includes('localhost:5173') || validatedURL.includes('127.0.0.1:5173'))) {
+      if (fs.existsSync(distHtmlPath)) {
+        console.log('[Electron] Dev server not reachable, falling back to dist/index.html');
+        mainWindow.loadFile(distHtmlPath);
+      } else {
+        mainWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(`
+          <!DOCTYPE html>
+          <html>
+          <body style="background:#191244;color:#fec5db;font-family:-apple-system,BlinkMacSystemFont,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:24px;box-sizing:border-box;-webkit-app-region:drag;">
+            <div style="background:#261b5c;border:3px solid #fec5db;border-radius:12px;padding:24px;max-width:440px;box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+              <h2 style="margin:0 0 12px;font-size:18px;color:#fec5db;">📻 Dev Server Not Detected</h2>
+              <p style="font-size:13px;color:#cbd5e1;line-height:1.6;margin:0 0 16px;">
+                No Vite dev server is running at <code style="background:#191244;padding:2px 6px;border-radius:4px;color:#8fa2d4;">${devServerUrl}</code>.
+              </p>
+              <div style="background:#191244;border-radius:8px;padding:12px;text-align:left;font-family:monospace;font-size:12px;color:#8fa2d4;line-height:1.8;">
+                <div><span style="color:#fec5db;"># For live development mode:</span></div>
+                <div>npm run electron:dev</div>
+                <div style="margin-top:8px;"><span style="color:#fec5db;"># Or to build and run production:</span></div>
+                <div>npm run app</div>
+              </div>
+            </div>
+          </body>
+          </html>
+        `)}`);
+      }
+    }
+  });
+
   if (forceDev || !fs.existsSync(distHtmlPath)) {
     mainWindow.loadURL(devServerUrl);
   } else {
