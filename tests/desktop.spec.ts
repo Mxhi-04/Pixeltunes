@@ -102,7 +102,11 @@ test('Electron sandbox, window controls, and loopback OAuth work with an isolate
       return route.fulfill({ status: 204 });
     });
     await page.getByRole('button', { name: /connect spotify \(1-click\)/i }).click();
-    const authorization = await app.evaluate(() => (globalThis as typeof globalThis & { testUrl: string }).testUrl);
+    let authorization = '';
+    await expect.poll(async () => {
+      authorization = await app.evaluate(() => (globalThis as typeof globalThis & { testUrl?: string }).testUrl || '');
+      return authorization;
+    }).toBeTruthy();
     const params = new URL(authorization).searchParams;
     expect(params.get('redirect_uri')).toBe(callback + '/callback');
     expect(params.get('code_challenge_method')).toBe('S256');

@@ -12,6 +12,8 @@ export default {
         pixelify: ['"Pixelify Sans"', 'monospace', 'cursive'],
         vt323: ['"VT323"', 'monospace'],
         digital: ['"DSEG7Classic"', 'monospace'],
+        grotesk: ['"Space Grotesk"', 'sans-serif'],
+        sans: ['"Inter"', 'system-ui', '-apple-system', 'sans-serif'],
       },
       colors: {
         retro: {

@@ -13,6 +13,23 @@ export interface RetroTheme {
   accentNavy: string;
   controlBtnBg: string;
   controlBtnText: string;
+  windowBorder?: string;
+  windowText?: string;
+  titleBarText?: string;
+  cassetteBody?: string;
 }
 
-export const THEMES: Record<string, RetroTheme> = themes;
+export type Theme = RetroTheme;
+
+export const THEMES: Record<string, RetroTheme> = Object.fromEntries(
+  Object.entries(themes).map(([k, t]) => [
+    k,
+    {
+      ...t,
+      windowBorder: t.primaryBorder,
+      windowText: t.textColor,
+      titleBarText: t.textColor,
+      cassetteBody: t.controlBtnBg,
+    },
+  ])
+);

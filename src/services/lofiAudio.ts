@@ -110,6 +110,25 @@ class LofiEngine {
     this.onStateChange = callback;
   }
 
+  public subscribe(callback: () => void): () => void {
+    const prev = this.onStateChange;
+    this.onStateChange = () => {
+      if (prev) prev();
+      callback();
+    };
+    return () => {
+      this.onStateChange = prev;
+    };
+  }
+
+  public next() {
+    this.nextTrack();
+  }
+
+  public prev() {
+    this.previousTrack();
+  }
+
   public getTrack(): BuiltinTrack {
     return BUILTIN_TRACKS[this.currentTrackIndex];
   }
