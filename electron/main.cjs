@@ -27,11 +27,14 @@ function getSecureTokenPath() {
   return path.join(app.getPath('userData'), 'spotify_refresh.token');
 }
 
-function saveRefreshTokenSecurely(refreshToken) {
+async function saveRefreshTokenSecurely(refreshToken) {
   if (!refreshToken) return;
   try {
     const tokenPath = getSecureTokenPath();
-    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+    if (safeStorage && typeof safeStorage.encryptStringAsync === 'function') {
+      const encrypted = await safeStorage.encryptStringAsync(refreshToken);
+      fs.writeFileSync(tokenPath, encrypted);
+    } else if (safeStorage && typeof safeStorage.encryptString === 'function' && safeStorage.isEncryptionAvailable()) {
       const encrypted = safeStorage.encryptString(refreshToken);
       fs.writeFileSync(tokenPath, encrypted);
     } else {
@@ -43,12 +46,15 @@ function saveRefreshTokenSecurely(refreshToken) {
   }
 }
 
-function loadRefreshTokenSecurely() {
+async function loadRefreshTokenSecurely() {
   try {
     const tokenPath = getSecureTokenPath();
     if (!fs.existsSync(tokenPath)) return null;
     const buffer = fs.readFileSync(tokenPath);
-    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+    if (safeStorage && typeof safeStorage.decryptStringAsync === 'function') {
+      return await safeStorage.decryptStringAsync(buffer);
+    }
+    if (safeStorage && typeof safeStorage.decryptString === 'function' && safeStorage.isEncryptionAvailable()) {
       return safeStorage.decryptString(buffer);
     }
     return buffer.toString('utf8');
@@ -70,7 +76,7 @@ let activePkceVerifier = '';
 
 // PKCE Authorization Code & Refresh Logic (Pure Public Client)
 async function performPkceTokenRefresh() {
-  const refreshToken = loadRefreshTokenSecurely();
+  const refreshToken = await loadRefreshTokenSecurely();
   if (!refreshToken) {
     return { error: 'no_refresh_token' };
   }
@@ -99,7 +105,7 @@ async function performPkceTokenRefresh() {
 
     // If Spotify rotated the refresh token, securely store the new one in Keychain
     if (data.refresh_token) {
-      saveRefreshTokenSecurely(data.refresh_token);
+      await saveRefreshTokenSecurely(data.refresh_token);
     }
 
     return {
@@ -259,7 +265,7 @@ function startPersistentAuthServer() {
 
             // Persist refresh token securely in macOS Keychain (never in localStorage/logs)
             if (refreshToken) {
-              saveRefreshTokenSecurely(refreshToken);
+              await saveRefreshTokenSecurely(refreshToken);
             }
 
             // Fetch user profile name
@@ -552,7 +558,7 @@ function startPersistentAuthServer() {
 
       // 4. /api/auth/session: Check if refresh token exists in Keychain
       if (parsedUrl.pathname === '/api/auth/session') {
-        const hasSession = Boolean(loadRefreshTokenSecurely());
+        const hasSession = Boolean(await loadRefreshTokenSecurely());
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ hasSession }));
         return;
@@ -725,8 +731,8 @@ ipcMain.handle('window:get-size', () => {
 });
 
 // PKCE Auth IPC Handlers (Secure Keychain Storage - No Client Secret)
-ipcMain.handle('auth:has-session', () => {
-  return Boolean(loadRefreshTokenSecurely());
+ipcMain.handle('auth:has-session', async () => {
+  return Boolean(await loadRefreshTokenSecurely());
 });
 
 ipcMain.handle('auth:login', () => {
