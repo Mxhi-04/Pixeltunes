@@ -317,9 +317,11 @@ export async function getUserPlaylists(offset = 0): Promise<{ playlists: Spotify
   const res = await spotifyRequest('GET', `/me/playlists?limit=50&offset=${offset}`);
   if (!res.ok) throw new Error(`Spotify playlists status ${res.status}`);
   const { items, next }: { items: (SpotifyPlaylist | null)[]; next: string | null } = await res.json();
+  const nextPage = next ? new URL(next, SPOTIFY_API_BASE) : null;
+  const nextOffset = Number(nextPage?.searchParams.get('offset'));
   return {
     playlists: items.filter((playlist): playlist is SpotifyPlaylist => Boolean(playlist?.id && playlist?.uri)),
-    nextOffset: next && items.length ? offset + items.length : null,
+    nextOffset: Number.isSafeInteger(nextOffset) && nextOffset > offset ? nextOffset : null,
   };
 }
 

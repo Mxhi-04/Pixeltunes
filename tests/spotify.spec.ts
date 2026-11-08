@@ -239,7 +239,7 @@ test('the Spotify drawer opens on playlists, loads additional pages, and plays a
     const item = isFirst
       ? { id: playlistId, name: 'First Mix', uri: `spotify:playlist:${playlistId}` }
       : { id: secondId, name: 'Saved Mix', uri: `spotify:playlist:${secondId}` };
-    await route.fulfill({ json: { items: [item], next: isFirst ? '/v1/me/playlists?offset=1' : null } });
+    await route.fulfill({ json: { items: [item], next: isFirst ? '/v1/me/playlists?offset=50&limit=50' : null } });
   });
   await page.getByTestId('toggle-playlist-btn').click();
   const drawer = page.getByRole('region', { name: 'Spotify playlists' });
@@ -250,7 +250,7 @@ test('the Spotify drawer opens on playlists, loads additional pages, and plays a
     'href', `https://open.spotify.com/playlist/${secondId}`);
   await drawer.getByRole('button', { name: 'Play Saved Mix' }).click();
   await expect.poll(() => mocked.plays).toEqual([{ context_uri: `spotify:playlist:${secondId}` }]);
-  expect(offsets).toEqual(['0', '1']);
+  expect(offsets).toEqual(['0', '50']);
 });
 
 test('web OAuth checks state, exchanges a matching code once, and disconnects across reload', async ({ page }) => {
