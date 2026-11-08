@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Apple, Monitor, Download, ChevronDown, Sparkles, Check } from 'lucide-react';
+import { Apple, Monitor, Download, ChevronDown, Zap, Check } from 'lucide-react';
 import { useOperatingSystem } from '../../hooks/useOperatingSystem';
 import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
 import { playClickSound } from '../../services/soundEffects';
@@ -30,7 +30,7 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
   const macButtonPrimary = (
     <div key="mac-btn" className="relative group flex-1 min-w-[280px]">
       <div className="absolute -top-3 left-4 z-20 px-2 py-0.5 bg-[#191244] border border-[#fec5db] text-[#fec5db] font-pixel text-[8px] tracking-wider uppercase flex items-center gap-1 shadow-pixel-sm animate-pulse">
-        <Sparkles className="w-2.5 h-2.5 text-[#ffd269]" />
+        <Zap className="w-2.5 h-2.5 text-[#ffd269] fill-[#ffd269]" />
         <span>RECOMMENDED FOR YOUR MAC</span>
       </div>
 
@@ -123,7 +123,7 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
   const windowsButtonPrimary = (
     <div key="win-btn" className="relative group flex-1 min-w-[280px]">
       <div className="absolute -top-3 left-4 z-20 px-2 py-0.5 bg-[#191244] border border-[#9df0cf] text-[#9df0cf] font-pixel text-[8px] tracking-wider uppercase flex items-center gap-1 shadow-pixel-sm animate-pulse">
-        <Sparkles className="w-2.5 h-2.5 text-[#ffd269]" />
+        <Zap className="w-2.5 h-2.5 text-[#ffd269] fill-[#ffd269]" />
         <span>RECOMMENDED FOR YOUR PC</span>
       </div>
 
