@@ -1,6 +1,7 @@
 import React from 'react';
 import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
+import { SideMascots } from './components/SideMascots';
 import { CinematicScroll } from './components/CinematicScroll';
 import { LivePlayerShowcase } from './components/LivePlayerShowcase';
 import { FeaturesGrid } from './components/FeaturesGrid';
@@ -19,6 +20,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenPlayer }) => {
     <div className="min-h-screen bg-[#0a071c] text-[#fffdf5] selection:bg-[#fec5db] selection:text-[#191244] font-sans antialiased">
       {/* Fixed Navbar */}
       <Navbar onOpenPlayer={onOpenPlayer} />
+
+      {/* 4 Fixed Side Mascots that enlarge on scroll */}
+      <SideMascots />
 
       {/* Main Content Sections */}
       <main>
