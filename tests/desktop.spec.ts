@@ -46,7 +46,10 @@ test('Electron sandbox, window controls, and loopback OAuth work with an isolate
     const connect = page.getByRole('dialog', { name: 'Connect Spotify' });
     await expect(connect).toBeVisible();
     if (process.platform === 'darwin') {
-      const visible = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isVisible());
+      const visible = () => app.evaluate(({ BrowserWindow }) => {
+        const win = BrowserWindow.getAllWindows()[0];
+        return win ? (win.isVisible() && !win.isMinimized()) : false;
+      });
       const show = () => app.evaluate(({ app, Tray }) => {
         const original = Tray.prototype.getBounds;
         Tray.prototype.getBounds = function () {
@@ -73,7 +76,7 @@ test('Electron sandbox, window controls, and loopback OAuth work with an isolate
       const play = page.getByTestId('main-play-btn');
       await play.click();
       await expect(play).toHaveAttribute('title', 'Pause');
-      await page.getByRole('button', { name: 'Hide to Menu Bar' }).click();
+      await page.getByRole('button', { name: /Minimize Window|Hide to Menu Bar/ }).click();
       await expect.poll(visible).toBe(false);
       await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Playback position' }).inputValue()))
         .toBeGreaterThan(0);

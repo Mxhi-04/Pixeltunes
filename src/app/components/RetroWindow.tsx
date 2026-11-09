@@ -377,7 +377,7 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
             </button>
             <button
               onClick={handleMinimizeWindow}
-              title={window.electronAPI?.isMenuBarApp ? "Hide to Menu Bar" : window.electronAPI?.isElectron ? "Minimize Window" : "Mini Mode"}
+              title={window.electronAPI?.isElectron ? "Minimize Window" : "Mini Mode"}
               className="w-3.5 h-3.5 rounded-full border-2 border-[#191244] bg-[#ffd269] relative overflow-hidden group cursor-pointer hover:scale-105 active:scale-95 transition-transform"
             >
               <div className="absolute top-0.5 left-0.5 w-1 h-1 bg-white rounded-full opacity-80" />

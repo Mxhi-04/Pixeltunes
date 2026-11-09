@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
-  isMenuBarApp: process.platform === 'darwin',
+  isMenuBarApp: false,
   minimize: () => ipcRenderer.send('window:minimize'),
   close: () => ipcRenderer.send('window:close'),
   toggleAlwaysOnTop: () => ipcRenderer.invoke('window:toggle-always-on-top'),

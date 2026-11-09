@@ -321,6 +321,7 @@ function createWindow() {
     transparent: true,
     hasShadow: false,
     resizable: true,
+    minimizable: true,
     alwaysOnTop: isAlwaysOnTop,
     backgroundColor: '#00000000',
     title: 'Pixeltunes - Pixel Music Player',
@@ -398,17 +399,22 @@ function createWindow() {
     }
   });
 
+  mainWindow.on('restore', () => {
+    mainWindow.show();
+    mainWindow.focus();
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
-function showPlayer() {
+function showPlayer(fromTray = false) {
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
 
   const anchor = tray?.getBounds();
-  if (!mainWindow.isVisible() && anchor?.width > 0) {
+  if (fromTray && !mainWindow.isVisible() && anchor?.width > 0) {
     const { workArea } = screen.getDisplayMatching(anchor);
     const bounds = mainWindow.getBounds();
     const fit = Math.min(1, workArea.width / bounds.width, workArea.height / bounds.height);
@@ -425,6 +431,7 @@ function showPlayer() {
   }
 
   mainWindow.show();
+  mainWindow.focus();
 }
 
 function createMenuBar() {
@@ -432,14 +439,22 @@ function createMenuBar() {
   tray.setToolTip('PixelTunes');
   tray.setIgnoreDoubleClickEvents(true);
   tray.on('click', () => {
-    if (mainWindow?.isVisible()) mainWindow.hide();
-    else showPlayer();
+    if (mainWindow?.isMinimized()) {
+      mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+    } else if (mainWindow?.isVisible()) {
+      mainWindow.hide();
+    } else {
+      showPlayer(true);
+    }
   });
   tray.on('right-click', () => {
+    const isPlayerActive = mainWindow?.isVisible() && !mainWindow?.isMinimized();
     tray.popUpContextMenu(Menu.buildFromTemplate([
-      mainWindow?.isVisible()
+      isPlayerActive
         ? { label: 'Hide Player', click: () => mainWindow?.hide() }
-        : { label: 'Show Player', click: showPlayer },
+        : { label: 'Show Player', click: () => showPlayer(true) },
       { label: 'Window Size', submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
         label: `${label} (${width} × ${height})`,
         type: 'radio',
@@ -447,7 +462,7 @@ function createMenuBar() {
         click: () => {
           applyPlayerScale(id);
           mainWindow.webContents.send('window:scale-changed', id);
-          showPlayer();
+          showPlayer(true);
         },
       })) },
       { label: 'Keep Player on Top', type: 'checkbox', checked: isAlwaysOnTop,
@@ -474,8 +489,7 @@ function handle(channel, handler) {
 
 ipcMain.on('window:minimize', (event) => {
   if (!fromApp(event)) return;
-  if (tray) mainWindow.hide();
-  else mainWindow.minimize();
+  mainWindow.minimize();
 });
 
 ipcMain.on('window:close', (event) => {
@@ -597,18 +611,21 @@ if (!app.requestSingleInstanceLock()) {
       if (/^[a-f0-9]{32}$/i.test(configured)) lastClientId = configured;
     } catch {}
     if (isMac) {
-      if (app.dock && fs.existsSync(appIconPath)) {
+      if (app.dock) {
         try {
-          app.dock.setIcon(appIconPath);
+          if (fs.existsSync(appIconPath)) {
+            app.dock.setIcon(appIconPath);
+          }
+          app.dock.show();
         } catch (e) {
           console.warn('[PixelTunes] Could not set dock icon:', e.message);
         }
       }
       createMenuBar();
-      app.setActivationPolicy('accessory');
+      app.setActivationPolicy('regular');
     }
     authServerReady = startPersistentAuthServer();
     createWindow();
-    app.on('activate', () => showPlayer());
+    app.on('activate', () => showPlayer(false));
   });
 }
