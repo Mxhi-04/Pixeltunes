@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Radio, ShieldCheck, Zap, Disc3, Music2 } from 'lucide-react';
+import { Palette, Radio, ShieldCheck, Zap, Disc3, Music2 } from 'lucide-react';
 import { DownloadButtons } from './DownloadButtons';
 import { InteractivePixelGrid } from './InteractivePixelGrid';
 import { useScrollParallax } from '../hooks/useScrollAnimation';
@@ -156,7 +156,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
             <span>Built-in Offline Radio</span>
           </div>
           <div className="px-3 py-1 bg-white/[0.06] border border-white/15 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-[#fec5db]" />
+            <Palette className="w-3.5 h-3.5 text-[#fec5db]" />
             <span>7 Authentic Palettes</span>
           </div>
           <div className="px-3 py-1 bg-white/[0.06] border border-white/15 flex items-center gap-1.5">
