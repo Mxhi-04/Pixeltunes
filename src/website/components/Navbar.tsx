@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Apple, Monitor, Download, Github, ExternalLink, Sparkles, Music } from 'lucide-react';
+import { Download, Github, ExternalLink, Sparkles, Music } from 'lucide-react';
+import { AppleLogo, WindowsLogo } from './DownloadButtons';
 import { useOperatingSystem } from '../hooks/useOperatingSystem';
 import { usePageScrollProgress } from '../hooks/useScrollAnimation';
 import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
@@ -112,9 +113,9 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenPlayer }) => {
             className="flex items-center gap-1.5 py-2 px-3.5 bg-gradient-to-r from-[#fec5db] to-[#ffd269] text-[#191244] border-2 border-[#191244] font-pixel text-[9px] font-bold shadow-pixel-sm hover:brightness-105 active:translate-y-0.5 transition-all cursor-pointer"
           >
             {osInfo.isMac ? (
-              <Apple className="w-3.5 h-3.5 fill-current" />
+              <AppleLogo className="w-3.5 h-3.5 fill-current" />
             ) : (
-              <Monitor className="w-3.5 h-3.5" />
+              <WindowsLogo className="w-3.5 h-3.5 fill-current" />
             )}
             <span>GET FOR {osInfo.name.toUpperCase()}</span>
             <Download className="w-3 h-3" />

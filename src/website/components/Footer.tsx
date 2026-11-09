@@ -27,24 +27,65 @@ export const Footer: React.FC<FooterProps> = ({ onOpenPlayer }) => {
 
       <div className="max-w-6xl mx-auto relative z-10 flex flex-col items-center text-center">
         {/* Animated Cassette Tape Visual Motif */}
-        <div className="relative mb-10 w-44 h-28 bg-[#191244] border-4 border-[#fec5db] shadow-pixel-lg p-2.5 flex flex-col justify-between">
-          <div className="flex items-center justify-between font-silkscreen text-[7.5px] text-[#ffd269]">
-            <span>PIXELTUNES</span>
+        <div
+          aria-label="PixelTunes retro cassette tape"
+          className="relative mb-10 w-48 h-30 bg-[#191244] border-4 border-[#fec5db] shadow-pixel-lg p-2.5 flex flex-col justify-between animate-cassette-float hover:scale-105 transition-transform duration-300 select-none group"
+        >
+          {/* Top Tape Label */}
+          <div className="flex items-center justify-between font-silkscreen text-[8px] text-[#ffd269]">
+            <span className="tracking-wider">PIXELTUNES</span>
             <span>SIDE A · 90 MIN</span>
           </div>
 
-          {/* Cassette Window & Spools */}
-          <div className="h-10 bg-[#fffdf5] border-2 border-[#191244] p-1 flex items-center justify-around">
-            <div className="w-6 h-6 rounded-full border-2 border-[#191244] bg-[#fec5db] flex items-center justify-center animate-spin" style={{ animationDuration: '4s' }}>
-              <div className="w-2 h-2 rounded-full bg-[#191244]" />
+          {/* Cassette Window & Spinning Spools */}
+          <div className="relative h-12 bg-[#fffdf5] border-2 border-[#191244] px-2 flex items-center justify-between overflow-hidden shadow-inner">
+            {/* Magnetic Tape Roll on Left Reel */}
+            <div className="absolute left-1.5 w-8 h-8 rounded-full bg-[#4a2e18]/25 border border-[#191244]/30 pointer-events-none" />
+
+            {/* Left Reel with Visible Rotating Cog Spokes */}
+            <div
+              className="relative z-10 w-7 h-7 rounded-full border-2 border-[#191244] bg-[#fec5db] flex items-center justify-center animate-spin"
+              style={{ animationDuration: '2.5s' }}
+            >
+              <div className="absolute w-1 h-full bg-[#191244]" />
+              <div className="absolute h-1 w-full bg-[#191244]" />
+              <div className="absolute w-1 h-full bg-[#191244] rotate-45" />
+              <div className="absolute w-1 h-full bg-[#191244] -rotate-45" />
+              <div className="absolute w-4 h-4 rounded-full bg-[#fec5db] border border-[#191244]" />
+              <div className="relative z-10 w-2 h-2 rounded-full bg-[#fffdf5] border border-[#191244]" />
             </div>
-            <div className="w-14 h-3 bg-[#191244]/15 border border-[#191244]/30" />
-            <div className="w-6 h-6 rounded-full border-2 border-[#191244] bg-[#fec5db] flex items-center justify-center animate-spin" style={{ animationDuration: '4s' }}>
-              <div className="w-2 h-2 rounded-full bg-[#191244]" />
+
+            {/* Center Tape Window with Rolling Strip and Meter */}
+            <div className="relative z-10 w-16 h-5 bg-[#191244]/15 border border-[#191244]/40 overflow-hidden flex items-center justify-center">
+              <div
+                className="absolute inset-0 opacity-40 animate-tape-rolling"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(90deg, #191244, #191244 2px, transparent 2px, transparent 6px)',
+                  backgroundSize: '12px 100%',
+                }}
+              />
+              <span className="relative z-10 font-silkscreen text-[7px] text-[#191244] font-bold tracking-wider">
+                LO-FI
+              </span>
+            </div>
+
+            {/* Right Reel with Visible Rotating Cog Spokes */}
+            <div
+              className="relative z-10 w-7 h-7 rounded-full border-2 border-[#191244] bg-[#fec5db] flex items-center justify-center animate-spin"
+              style={{ animationDuration: '2.5s' }}
+            >
+              <div className="absolute w-1 h-full bg-[#191244]" />
+              <div className="absolute h-1 w-full bg-[#191244]" />
+              <div className="absolute w-1 h-full bg-[#191244] rotate-45" />
+              <div className="absolute w-1 h-full bg-[#191244] -rotate-45" />
+              <div className="absolute w-4 h-4 rounded-full bg-[#fec5db] border border-[#191244]" />
+              <div className="relative z-10 w-2 h-2 rounded-full bg-[#fffdf5] border border-[#191244]" />
             </div>
           </div>
 
-          <div className="font-silkscreen text-[7px] text-[#9df0cf] tracking-widest text-center">
+          {/* Bottom Tape Subtitle */}
+          <div className="font-silkscreen text-[7.5px] text-[#9df0cf] tracking-widest text-center">
             LO-FI & SPOTIFY DESKTOP
           </div>
         </div>

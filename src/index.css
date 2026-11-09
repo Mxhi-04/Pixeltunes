@@ -88,6 +88,33 @@ html {
   animation: pixelSparkFade 0.22s steps(4) forwards;
 }
 
+/* Animated Cassette Tape Bobbing & Floating */
+@keyframes cassetteFloat {
+  0%, 100% {
+    transform: translateY(0px) rotate(-1.5deg);
+  }
+  50% {
+    transform: translateY(-8px) rotate(1.5deg);
+  }
+}
+
+.animate-cassette-float {
+  animation: cassetteFloat 4s ease-in-out infinite;
+}
+
+@keyframes tapeStripes {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 24px 0;
+  }
+}
+
+.animate-tape-rolling {
+  animation: tapeStripes 1.2s linear infinite;
+}
+
 /* Electron Frameless Window Drag Region */
 .app-drag {
   -webkit-app-region: drag;

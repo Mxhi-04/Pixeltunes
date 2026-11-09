@@ -12,6 +12,10 @@ test('landing page renders SOTA hero, dynamic OS-aware download buttons, and int
   await expect(macBtn).toBeVisible();
   await expect(winBtn).toBeVisible();
 
+  // Verify footer cassette tape
+  const cassette = page.getByLabel('PixelTunes retro cassette tape');
+  await expect(cassette).toBeVisible();
+
   // Verify that on Mac, Mac button is placed on the left / recommended
   const isMac = process.platform === 'darwin';
   if (isMac) {

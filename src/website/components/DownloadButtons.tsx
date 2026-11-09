@@ -1,8 +1,32 @@
 import React, { useState } from 'react';
-import { Apple, Monitor, Download, ChevronDown, Zap, Check } from 'lucide-react';
+import { Download, ChevronDown, Zap, Check } from 'lucide-react';
 import { useOperatingSystem } from '../hooks/useOperatingSystem';
 import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
 import { playClickSound } from '../../shared/services/soundEffects';
+
+// Official Apple Inc. bitten apple logo in crisp SVG
+export const AppleLogo: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M15.97 4.17c.62-.75 1.04-1.8 1.01-2.85-.9.04-2 .6-2.65 1.35-.58.68-.99 1.74-.94 2.81 1.01.08 2-.56 2.58-1.31" />
+  </svg>
+);
+
+// Official 4-pane Microsoft Windows logo in crisp SVG
+export const WindowsLogo: React.FC<{ className?: string }> = ({ className = 'w-5 h-5' }) => (
+  <svg
+    viewBox="0 0 24 24"
+    fill="currentColor"
+    className={className}
+    aria-hidden="true"
+  >
+    <path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z" />
+  </svg>
+);
 
 interface DownloadButtonsProps {
   className?: string;
@@ -40,8 +64,8 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
           onClick={handleDownloadClick}
           className="flex-1 py-4 px-5 bg-gradient-to-r from-[#fec5db] via-[#ffe6f0] to-[#ffd269] text-[#191244] border-3 border-[#191244] font-pixel flex items-center gap-3.5 hover:brightness-105 active:translate-y-0.5 cursor-pointer"
         >
-          <div className="w-10 h-10 bg-[#191244] text-[#fffdf5] flex items-center justify-center shrink-0 border-2 border-[#191244] shadow-pixel-sm">
-            <Apple className="w-5 h-5 fill-current" />
+          <div className="w-10 h-10 bg-[#191244] text-white flex items-center justify-center shrink-0 border-2 border-[#191244] shadow-pixel-sm">
+            <AppleLogo className="w-5 h-5 fill-white text-white" />
           </div>
           <div className="flex flex-col text-left">
             <span className="text-[12px] font-bold tracking-wide flex items-center gap-1.5">
@@ -104,8 +128,8 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
         onClick={handleDownloadClick}
         className="w-full py-4 px-5 bg-[#191244]/80 hover:bg-[#261b5c] backdrop-blur-md text-[#fffdf5] border-3 border-[#8fa2d4]/50 hover:border-[#fec5db] shadow-pixel group flex items-center gap-3.5 transition-all cursor-pointer hover:translate-x-[-1px] hover:translate-y-[-1px]"
       >
-        <div className="w-9 h-9 bg-white/10 text-[#fec5db] flex items-center justify-center shrink-0 border border-white/20">
-          <Apple className="w-5 h-5 fill-current" />
+        <div className="w-9 h-9 bg-white/10 text-white flex items-center justify-center shrink-0 border border-white/20">
+          <AppleLogo className="w-5 h-5 fill-white text-white" />
         </div>
         <div className="flex flex-col text-left font-pixel">
           <span className="text-[11px] font-bold tracking-wide flex items-center gap-1.5 text-[#fffdf5] group-hover:text-[#fec5db] transition-colors">
@@ -132,8 +156,8 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
         onClick={handleDownloadClick}
         className="w-full py-4 px-5 bg-gradient-to-r from-[#9df0cf] via-[#b4c4ec] to-[#8fa2d4] text-[#191244] border-3 border-[#191244] shadow-pixel-lg font-pixel flex items-center gap-3.5 hover:brightness-105 active:translate-y-0.5 cursor-pointer group-hover:translate-x-[-2px] group-hover:translate-y-[-2px] transition-all duration-150"
       >
-        <div className="w-10 h-10 bg-[#191244] text-[#9df0cf] flex items-center justify-center shrink-0 border-2 border-[#191244] shadow-pixel-sm">
-          <Monitor className="w-5 h-5" />
+        <div className="w-10 h-10 bg-[#191244] text-white flex items-center justify-center shrink-0 border-2 border-[#191244] shadow-pixel-sm">
+          <WindowsLogo className="w-5 h-5 fill-white text-white" />
         </div>
         <div className="flex flex-col text-left">
           <span className="text-[12px] font-bold tracking-wide flex items-center gap-1.5">
@@ -155,8 +179,8 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
         onClick={handleDownloadClick}
         className="w-full py-4 px-5 bg-[#191244]/80 hover:bg-[#261b5c] backdrop-blur-md text-[#fffdf5] border-3 border-[#8fa2d4]/50 hover:border-[#9df0cf] shadow-pixel group flex items-center gap-3.5 transition-all cursor-pointer hover:translate-x-[-1px] hover:translate-y-[-1px]"
       >
-        <div className="w-9 h-9 bg-white/10 text-[#9df0cf] flex items-center justify-center shrink-0 border border-white/20">
-          <Monitor className="w-5 h-5" />
+        <div className="w-9 h-9 bg-white/10 text-white flex items-center justify-center shrink-0 border border-white/20">
+          <WindowsLogo className="w-5 h-5 fill-white text-white" />
         </div>
         <div className="flex flex-col text-left font-pixel">
           <span className="text-[11px] font-bold tracking-wide flex items-center gap-1.5 text-[#fffdf5] group-hover:text-[#9df0cf] transition-colors">
