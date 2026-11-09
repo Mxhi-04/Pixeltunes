@@ -213,13 +213,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onArtModeSelect('pixelCovers');
                 }}
-                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
+                className={`py-2 px-1 text-[8px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold flex flex-col items-center justify-center text-center min-h-[52px] leading-tight ${
                   artMode === 'pixelCovers' || artMode === 'inspo' || artMode === 'saturn'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                ✨ PIXEL COVERS
+                <span className="text-[11px] leading-none mb-1">✨</span>
+                <span>PIXEL COVERS</span>
               </button>
               <button
                 type="button"
@@ -228,13 +229,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onArtModeSelect('pixelArt');
                 }}
-                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
+                className={`py-2 px-1 text-[8px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold flex flex-col items-center justify-center text-center min-h-[52px] leading-tight ${
                   artMode === 'pixelArt'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                🎨 SPOTIFY ART
+                <span className="text-[11px] leading-none mb-1">🎨</span>
+                <span>SPOTIFY ART</span>
               </button>
               <button
                 type="button"
@@ -243,13 +245,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onArtModeSelect('cassette');
                 }}
-                className={`p-2 text-[10px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold ${
+                className={`py-2 px-1 text-[8px] border-2 border-[#191244] font-pixel transition-all cursor-pointer font-bold flex flex-col items-center justify-center text-center min-h-[52px] leading-tight ${
                   artMode === 'cassette'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                📼 CASSETTE
+                <span className="text-[11px] leading-none mb-1">📼</span>
+                <span>CASSETTE</span>
               </button>
             </div>
           </div>
