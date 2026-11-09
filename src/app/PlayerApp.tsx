@@ -222,8 +222,11 @@ export function App() {
   const CARD_HEIGHT = 460;
   const IPOD_WIDTH = 270;
   const IPOD_HEIGHT = 475;
+  const CAPSULE_WIDTH = 400;
+  const CAPSULE_HEIGHT = 100;
   const isCard = layoutMode === 'card';
   const isIpod = layoutMode === 'ipod';
+  const isCapsule = layoutMode === 'capsule';
 
   const getCardDimensions = (s: PlayerScale) => {
     if (s === 'mini' || s === 'tiny') return { width: 256, height: 368 };
@@ -245,12 +248,15 @@ export function App() {
       } else if (layoutMode === 'card') {
         const { width, height } = getCardDimensions(scale);
         window.electronAPI.setSize(width, height);
+      } else if (layoutMode === 'capsule') {
+        window.electronAPI.setSize(CAPSULE_WIDTH, CAPSULE_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
       }
     }
   }, []);
 
   const handleLayoutModeChange = (mode: PlayerLayoutMode) => {
     setLayoutMode(mode);
+    window.electronAPI?.setLayoutMode?.(mode);
     if (isElectron && window.electronAPI?.setSize) {
       if (mode === 'ipod') {
         const { width, height } = getIpodDimensions(scale);
@@ -258,6 +264,8 @@ export function App() {
       } else if (mode === 'card') {
         const { width, height } = getCardDimensions(scale);
         window.electronAPI.setSize(width, height);
+      } else if (mode === 'capsule') {
+        window.electronAPI.setSize(CAPSULE_WIDTH, CAPSULE_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
       } else {
         window.electronAPI.setSize(SCALES[scale].width, SCALES[scale].height);
       }
@@ -273,6 +281,8 @@ export function App() {
       } else if (layoutMode === 'card') {
         const { width, height } = getCardDimensions(nextScale);
         window.electronAPI.setSize(width, height);
+      } else if (layoutMode === 'capsule') {
+        window.electronAPI.setSize(CAPSULE_WIDTH, CAPSULE_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
       } else {
         window.electronAPI.setSize(SCALES[nextScale].width, SCALES[nextScale].height);
       }
@@ -284,18 +294,27 @@ export function App() {
       window.electronAPI?.setScale(scale);
     }
   }, [scale, layoutMode]);
+
   useEffect(() => window.electronAPI?.onScaleChanged((nextScale) => {
     if (layoutMode === 'classic') {
       setScale(nextScale);
     }
   }), [setScale, layoutMode]);
 
-  const portrait = !isElectron && !isCard && !isIpod && dimensions.width <= 560 && dimensions.height > dimensions.width;
-  const frameWidth = isIpod ? IPOD_WIDTH : isCard ? CARD_WIDTH : portrait ? 420 : BASE_WIDTH;
-  const frameHeight = isIpod ? IPOD_HEIGHT : isCard ? CARD_HEIGHT : portrait ? 630 : BASE_HEIGHT;
+  useEffect(() => {
+    return window.electronAPI?.onLayoutModeChanged?.((nextMode) => {
+      handleLayoutModeChange(nextMode);
+    });
+  }, []);
+
+  const portrait = !isElectron && !isCard && !isIpod && !isCapsule && dimensions.width <= 560 && dimensions.height > dimensions.width;
+  const frameWidth = isCapsule ? CAPSULE_WIDTH : isIpod ? IPOD_WIDTH : isCard ? CARD_WIDTH : portrait ? 420 : BASE_WIDTH;
+  const frameHeight = isCapsule ? CAPSULE_HEIGHT : isIpod ? IPOD_HEIGHT : isCard ? CARD_HEIGHT : portrait ? 630 : BASE_HEIGHT;
   const fit = Math.min(dimensions.width / frameWidth, dimensions.height / frameHeight);
   const zoomScale = isElectron
     ? fit
+    : isCapsule
+    ? 1
     : (isCard || isIpod)
     ? (scale === 'mini' || scale === 'tiny' ? Math.min(0.85, fit * 0.78) : scale === 'large' || scale === 'xl' ? Math.min(1.3, fit * 1.15) : Math.min(1.15, fit * 0.95))
     : portrait

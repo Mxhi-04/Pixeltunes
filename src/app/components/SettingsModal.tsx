@@ -131,7 +131,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
             </div>
             {/* Layout Style Choice */}
-            <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
               <button
                 type="button"
                 aria-pressed={layoutMode === 'classic'}
@@ -139,7 +139,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onLayoutModeChange?.('classic');
                 }}
-                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
                   layoutMode === 'classic'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
@@ -155,7 +155,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onLayoutModeChange?.('card');
                 }}
-                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
                   layoutMode === 'card'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
@@ -171,7 +171,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onLayoutModeChange?.('ipod');
                 }}
-                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
                   layoutMode === 'ipod'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
@@ -179,6 +179,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               >
                 <div>📟 IPOD MINI</div>
                 <div className="text-[7px] opacity-75 mt-0.5 font-sans">Click Wheel</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={layoutMode === 'capsule'}
+                onClick={() => {
+                  playClickSound();
+                  onLayoutModeChange?.('capsule');
+                }}
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                  layoutMode === 'capsule'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                <div>💊 CAPSULE</div>
+                <div className="text-[7px] opacity-75 mt-0.5 font-sans">Menu Bar</div>
               </button>
             </div>
 

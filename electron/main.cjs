@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, shell, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, Menu, Tray, nativeImage, ipcMain, shell, screen, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -495,6 +495,16 @@ function buildTrayMenu() {
           click: () => {
             playerLayoutMode = 'ipod';
             mainWindow?.webContents.send('window:layout-changed', 'ipod');
+            showPlayer(true);
+          },
+        },
+        {
+          label: '💊 Menu Bar Capsule',
+          type: 'radio',
+          checked: playerLayoutMode === 'capsule',
+          click: () => {
+            playerLayoutMode = 'capsule';
+            mainWindow?.webContents.send('window:layout-changed', 'capsule');
             showPlayer(true);
           },
         },
