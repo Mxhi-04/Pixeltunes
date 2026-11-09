@@ -626,6 +626,7 @@ if (!app.requestSingleInstanceLock()) {
     }
     authServerReady = startPersistentAuthServer();
     createWindow();
+    showPlayer(false);
     app.on('activate', () => showPlayer(false));
   });
 }
