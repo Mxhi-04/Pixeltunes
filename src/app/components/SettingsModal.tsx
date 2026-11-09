@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { THEMES, RetroTheme } from '../../types/theme';
-import { PLAYER_SCALES, SCALES, PlayerScale } from '../../types/scale';
+import { PLAYER_SCALES, SCALES, PlayerScale, PlayerLayoutMode } from '../../types/scale';
 import { playClickSound, setSoundEffectsEnabled } from '../../shared/services/soundEffects';
 import {
   isAutoLaunchEnabled,
@@ -17,18 +17,20 @@ interface SettingsModalProps {
   onArtModeSelect: (mode: 'pixelCovers' | 'pixelArt' | 'cassette') => void;
   crtEnabled: boolean;
   onToggleCrt: () => void;
-  motion: 'system' | 'on' | 'off';
-  onMotionChange: (motion: 'system' | 'on' | 'off') => void;
+  motion?: 'system' | 'on' | 'off';
+  onMotionChange?: (motion: 'system' | 'on' | 'off') => void;
   soundEnabled: boolean;
   onToggleSound: (enabled: boolean) => void;
-  windowTitle: string;
-  onWindowTitleChange: (title: string) => void;
+  windowTitle?: string;
+  onWindowTitleChange?: (title: string) => void;
   titleEmojis?: string;
   onTitleEmojisChange?: (emojis: string) => void;
   headerTag?: string;
   onHeaderTagChange?: (tag: string) => void;
   scale: PlayerScale;
   onScaleChange: (scale: PlayerScale) => void;
+  layoutMode?: PlayerLayoutMode;
+  onLayoutModeChange?: (mode: PlayerLayoutMode) => void;
   pixelResolution?: number;
   onPixelResolutionChange?: (resolution: number) => void;
 }
@@ -42,18 +44,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onArtModeSelect,
   crtEnabled,
   onToggleCrt,
-  motion,
-  onMotionChange,
   soundEnabled,
   onToggleSound,
-  windowTitle,
-  onWindowTitleChange,
-  titleEmojis,
-  onTitleEmojisChange,
-  headerTag,
-  onHeaderTagChange,
   scale,
   onScaleChange,
+  layoutMode = 'classic',
+  onLayoutModeChange,
   pixelResolution = 180,
   onPixelResolutionChange,
 }) => {
@@ -126,40 +122,82 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         </div>
 
         {/* Scrollable Content */}
-        <div className="p-3 overflow-y-auto min-h-0 flex-1 space-y-3 font-silkscreen text-xs" style={{ color: currentTheme.textColor }}>
+        <div className="p-3 overflow-y-auto overflow-x-hidden min-h-0 flex-1 space-y-3 font-silkscreen text-xs" style={{ color: currentTheme.textColor }}>
           {/* Player Layout */}
           <div>
             <div className="flex justify-between items-center mb-1.5">
               <label className="font-pixel text-[10px]">
                 PLAYER LAYOUT:
               </label>
-              <span className="text-[10px] font-bold">
-                {SCALES[scale].width} × {SCALES[scale].height}
-              </span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {PLAYER_SCALES.map((s) => (
-                <button
-                  key={s}
-                  aria-pressed={scale === s}
-                  type="button"
-                  onClick={() => {
-                    playClickSound();
-                    onScaleChange(s);
-                  }}
-                  className={`p-2 text-center border-2 border-[#191244] font-pixel text-[10px] transition-all cursor-pointer ${
-                    scale === s
-                      ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
-                      : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                  }`}
-                >
-                  <div className="font-bold">{SCALES[s].label}</div>
-                  <div className="text-[8px] opacity-75 mt-0.5 font-sans">
-                    {SCALES[s].width}px
-                  </div>
-                </button>
-              ))}
+            {/* Layout Style Choice */}
+            <div className="grid grid-cols-2 gap-2 mb-2">
+              <button
+                type="button"
+                aria-pressed={layoutMode !== 'card'}
+                onClick={() => {
+                  playClickSound();
+                  onLayoutModeChange?.('classic');
+                }}
+                className={`p-2 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer font-bold ${
+                  layoutMode !== 'card'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                <div>◫ CLASSIC</div>
+                <div className="text-[7.5px] opacity-75 mt-0.5 font-sans">Wide Landscape</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={layoutMode === 'card'}
+                onClick={() => {
+                  playClickSound();
+                  onLayoutModeChange?.('card');
+                }}
+                className={`p-2 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer font-bold ${
+                  layoutMode === 'card'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                <div>▯ MUSIC CARD</div>
+                <div className="text-[7.5px] opacity-75 mt-0.5 font-sans">Portrait Polaroid</div>
+              </button>
             </div>
+
+            {/* Window Size Scale (for Classic layout only) */}
+            {layoutMode !== 'card' && (
+              <div>
+                <div className="flex justify-between items-center mb-1 text-[8.5px] opacity-80 font-pixel">
+                  <span>WINDOW SIZE:</span>
+                  <span>{SCALES[scale].width} × {SCALES[scale].height}</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {PLAYER_SCALES.map((s) => (
+                    <button
+                      key={s}
+                      aria-pressed={scale === s}
+                      type="button"
+                      onClick={() => {
+                        playClickSound();
+                        onScaleChange(s);
+                      }}
+                      className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer ${
+                        scale === s
+                          ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm font-bold'
+                          : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                      }`}
+                    >
+                      <div>{SCALES[s].label}</div>
+                      <div className="text-[7.5px] opacity-75 font-sans">
+                        {SCALES[s].width}px
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Art Display Mode */}
@@ -216,14 +254,45 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           </div>
 
-          {artMode === 'pixelArt' && (
-            <label className="flex items-center justify-between gap-2 bg-[#fffdf5] text-[#191244] p-2 border-2 border-[#191244]">
-              <span className="font-pixel text-[10px]">ART RESOLUTION</span>
-              <select title="Resolution of generated pixel art" value={pixelResolution} onChange={(event) => onPixelResolutionChange?.(Number(event.target.value))}>
-                {[48, 64, 96, 120, 180, 240].map((size) => <option key={size} value={size}>{size} px</option>)}
-              </select>
-            </label>
-          )}
+          {/* Retro Pixel Cover Toggle (180px or OFF) */}
+          <div className="flex items-center justify-between bg-[#fffdf5] text-[#191244] p-2 border-2 border-[#191244]">
+            <div>
+              <span className="font-pixel text-[10px] font-bold block">RETRO COVER:</span>
+              <span className="font-pixel text-[8px] text-[#191244]/70">
+                {pixelResolution > 0 ? '180px Pixel Art' : 'Original Cover (Off)'}
+              </span>
+            </div>
+            <div className="flex gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  onPixelResolutionChange?.(180);
+                }}
+                className={`px-3 py-1 text-[9px] font-pixel border-2 border-[#191244] font-bold cursor-pointer transition-all ${
+                  pixelResolution > 0
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-white text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                ON
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  playClickSound();
+                  onPixelResolutionChange?.(0);
+                }}
+                className={`px-3 py-1 text-[9px] font-pixel border-2 border-[#191244] font-bold cursor-pointer transition-all ${
+                  pixelResolution === 0
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-white text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                OFF
+              </button>
+            </div>
+          </div>
 
           {/* Theme Palette */}
           <div>
@@ -263,14 +332,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
           {/* Toggle Options */}
           <div className="space-y-2 pt-1 text-[#191244]">
-            <label className="flex items-center justify-between gap-2 bg-[#fffdf5] p-2 border-2 border-[#191244]">
-              <span className="font-pixel text-[10px]">ANIMATIONS</span>
-              <select value={motion} onChange={(event) => onMotionChange(event.target.value as typeof motion)}>
-                <option value="system">Follow system</option>
-                <option value="on">On</option>
-                <option value="off">Off</option>
-              </select>
-            </label>
             {/* Auto-Launch Spotify in Background */}
             {window.electronAPI?.isElectron && <div className="bg-[#fffdf5] p-2 border-2 border-[#191244]">
               <div className="flex items-center justify-between mb-1.5">
@@ -343,54 +404,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 className="w-4 h-4 accent-[#191244]"
               />
             </label>
-          </div>
-
-          {/* Custom Labels */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <div>
-              <label htmlFor="window-title" className="block font-pixel text-[9px] mb-1">
-                WINDOW TITLE:
-              </label>
-              <input
-                type="text"
-                id="window-title"
-                value={windowTitle}
-                onChange={(e) => onWindowTitleChange(e.target.value)}
-                maxLength={24}
-                className="w-full px-2 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] text-[10px] font-pixel"
-              />
-            </div>
-            <div>
-              <label htmlFor="title-emojis" className="block font-pixel text-[9px] mb-1">
-                TEXT EMOJIS:
-              </label>
-              <input
-                type="text"
-                id="title-emojis"
-                value={titleEmojis ?? headerTag ?? ''}
-                onChange={(e) => {
-                  if (onTitleEmojisChange) onTitleEmojisChange(e.target.value);
-                  if (onHeaderTagChange) onHeaderTagChange(e.target.value);
-                }}
-                maxLength={50}
-                className="w-full px-2 py-1 bg-[#fffdf5] text-[#191244] border-2 border-[#191244] text-[11px] font-sans"
-              />
-            </div>
-          </div>
-          <div className="flex items-center justify-between text-[8px] font-pixel text-[#8fa2d4] pt-0.5">
-            <span>PRESET:</span>
-            <button
-              type="button"
-              onClick={() => {
-                playClickSound();
-                onWindowTitleChange('PIXELTUNES');
-                if (onTitleEmojisChange) onTitleEmojisChange('𐙚 ⊹₊⋆☆');
-                if (onHeaderTagChange) onHeaderTagChange('𐙚 ⊹₊⋆☆');
-              }}
-              className="text-[#191244] hover:text-[#ff7b90] underline cursor-pointer"
-            >
-              Reset to 𐙚 ⊹₊⋆☆
-            </button>
           </div>
 
           {/* Live Web App & GitHub Links */}

@@ -119,8 +119,34 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     return () => { image.onload = null; };
   }, [isPixelCoversMode, coverUrl, showAnimatedGif]);
 
-  const showSpotifyArtwork = mode === 'pixelArt' && albumArtUrl &&
-    albumArtUrl !== failedArtworkUrl && albumArtUrl.startsWith('https://');
+  // Load Spotify album art as an Image for canvas pixelation
+  const [spotifyImage, setSpotifyImage] = useState<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (mode !== 'pixelArt' || !albumArtUrl || !albumArtUrl.startsWith('https://')) {
+      setSpotifyImage(null);
+      return;
+    }
+
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) setSpotifyImage(img);
+    };
+    img.onerror = () => {
+      if (!cancelled) {
+        setFailedArtworkUrl(albumArtUrl);
+        setSpotifyImage(null);
+      }
+    };
+    img.src = albumArtUrl;
+
+    return () => {
+      cancelled = true;
+      img.onload = null;
+      img.onerror = null;
+    };
+  }, [mode, albumArtUrl]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,58 +160,77 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     const start = performance.now();
     let frameId = 0;
 
+    // Offscreen buffer at the user-selected pixel resolution (180px when ON, or high-res when OFF)
+    const isPixelated = Number(pixelResolution) > 0;
+    const res = isPixelated ? 180 : 240;
+    const offscreen = document.createElement('canvas');
+    offscreen.width = res;
+    offscreen.height = res;
+    const offCtx = offscreen.getContext('2d');
+    if (!offCtx) return;
+
     const render = (now: number) => {
       const frame = animate ? (now - start) / (1000 / 60) + 1 : 1;
-      ctx.imageSmoothingEnabled = false;
+      offCtx.imageSmoothingEnabled = !isPixelated;
+
       if (mode === 'cassette') {
-        drawCassetteTape(ctx, width, height, frame, isPlaying && !reducedMotion);
+        drawCassetteTape(offCtx, res, res, frame, isPlaying && !reducedMotion);
       } else if (mode === 'pixelArt') {
-        const art = document.createElement('canvas');
-        art.width = pixelResolution;
-        art.height = pixelResolution;
-        const artCtx = art.getContext('2d');
-        if (!artCtx) return;
-        drawSynthwaveLandscape(artCtx, pixelResolution, pixelResolution, trackTitle + artistName);
-        ctx.drawImage(art, 0, 0, width, height);
+        if (spotifyImage && spotifyImage.complete && spotifyImage.naturalWidth > 0) {
+          offCtx.clearRect(0, 0, res, res);
+          offCtx.drawImage(spotifyImage, 0, 0, res, res);
+        } else {
+          // Fallback to procedural synthwave landscape if artwork not available
+          drawSynthwaveLandscape(offCtx, res, res, trackTitle + artistName);
+        }
       } else if (activePixelCover.type === 'canvas_saturn') {
-        drawSaturnScene(ctx, width, height, frame, cover ?? null);
+        drawSaturnScene(offCtx, res, res, frame, cover ?? null);
       } else if (activePixelCover.type === 'canvas_synthwave') {
-        drawSynthwaveScene(ctx, width, height, frame, isPlaying && !reducedMotion, trackTitle + artistName);
+        drawSynthwaveScene(offCtx, res, res, frame, isPlaying && !reducedMotion, trackTitle + artistName);
       } else if (cover && activePixelCover.type === 'gif') {
-        // Canvas uses the default frame of animated image sources.
-        ctx.fillStyle = navy;
-        ctx.fillRect(0, 0, width, height);
-        const ratio = Math.min(width / cover.naturalWidth, height / cover.naturalHeight);
+        offCtx.fillStyle = navy;
+        offCtx.fillRect(0, 0, res, res);
+        const ratio = Math.min(res / cover.naturalWidth, res / cover.naturalHeight);
         const w = cover.naturalWidth * ratio;
         const h = cover.naturalHeight * ratio;
-        ctx.drawImage(cover, (width - w) / 2, (height - h) / 2, w, h);
+        offCtx.drawImage(cover, (res - w) / 2, (res - h) / 2, w, h);
       } else {
-        drawMoonBunnyScene(ctx, width, height, frame, isPlaying && !reducedMotion, colors);
+        drawMoonBunnyScene(offCtx, res, res, frame, isPlaying && !reducedMotion, colors);
       }
+
+      // Upscale onto display canvas (crisp nearest-neighbor if pixelated, smooth if retro cover off)
+      ctx.clearRect(0, 0, width, height);
+      ctx.imageSmoothingEnabled = !isPixelated;
+      ctx.drawImage(offscreen, 0, 0, width, height);
 
       if (animate) frameId = requestAnimationFrame(render);
     };
 
     render(start);
     return () => cancelAnimationFrame(frameId);
-  }, [isPlaying, mode, isPixelCoversMode, activePixelCover, coverUrl, coverImage, showSpotifyArtwork,
+  }, [isPlaying, mode, isPixelCoversMode, activePixelCover, coverUrl, coverImage, spotifyImage,
     navy, pink, periwinkle, cream, trackTitle, artistName, reducedMotion, pixelResolution]);
 
-  const art = showAnimatedGif ? (
-    <img src={coverUrl} alt="" className="w-full h-full object-contain pixelated pointer-events-none" />
+  const isPixelated = Number(pixelResolution) > 0;
+  const showSmoothCover = !isPixelated && mode === 'pixelArt' && Boolean(albumArtUrl);
+
+  const art = showSmoothCover ? (
+    <img src={albumArtUrl || undefined} alt="" className="w-full h-full object-cover pointer-events-none" />
+  ) : showAnimatedGif ? (
+    <img src={coverUrl} alt="" className={`w-full h-full object-contain pointer-events-none ${isPixelated ? 'pixelated' : ''}`} />
   ) : (
     <canvas ref={canvasRef} width={240} height={240}
-      className="w-full h-full object-contain pixelated pointer-events-none" aria-hidden="true" />
+      className={`w-full h-full object-contain pointer-events-none ${isPixelated ? 'pixelated' : ''}`} aria-hidden="true" />
   );
   const frameClass = 'relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden';
 
-  if (showSpotifyArtwork) {
-    const artwork = <img src={albumArtUrl} alt={`Cover art for ${trackTitle}`}
-      className="max-w-full max-h-full rounded object-contain" style={{ imageRendering: 'auto' }}
-      onError={() => setFailedArtworkUrl(albumArtUrl)} />;
-    return albumArtLink ? (
-      <a href={albumArtLink} target="_blank" rel="noopener noreferrer" className={`${frameClass} z-[41]`}>{artwork}</a>
-    ) : <div className={`${frameClass} z-[41]`}>{artwork}</div>;
+  if (mode === 'pixelArt' && albumArtLink) {
+    return (
+      <a href={albumArtLink} target="_blank" rel="noopener noreferrer" className={`${frameClass} cursor-pointer`}
+        title={`Open ${trackTitle} in Spotify`}>
+        {art}
+      </a>
+    );
   }
 
   return isPixelCoversMode ? (

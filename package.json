@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "electron": "node scripts/run-electron.mjs",
+    "electron": "npm run build && node scripts/run-electron.mjs",
     "electron:dev": "concurrently -k \"vite\" \"wait-on tcp:127.0.0.1:5173 && npm run electron -- --dev\"",
     "app": "npm run build && npm run electron",
     "start": "npm run app",

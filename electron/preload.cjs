@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+try {
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.classList.add('is-electron');
+  }
+} catch {
+  // ignore
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   isElectron: true,
   isMenuBarApp: false,

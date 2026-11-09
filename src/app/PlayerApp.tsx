@@ -7,7 +7,7 @@ import { QuickConnectModal } from './components/QuickConnectModal';
 import { AutoLaunchPermissionModal } from './components/AutoLaunchPermissionModal';
 import { PlayerDialog } from './components/PlayerDialog';
 import { THEMES } from '../types/theme';
-import { PLAYER_SCALES, SCALES, PlayerScale } from '../types/scale';
+import { PLAYER_SCALES, SCALES, PlayerScale, PlayerLayoutMode, PLAYER_LAYOUT_MODES } from '../types/scale';
 import { SpotifyPlaybackState } from '../types/spotify';
 import {
   getPlaybackState,
@@ -53,15 +53,15 @@ export function App() {
   const [themeId, setThemeId] = usePreference('theme', 'inspo', Object.keys(THEMES));
   const theme = THEMES[themeId];
   const [artMode, setArtMode] = usePreference<ArtMode>('art_mode', 'pixelCovers', ['pixelCovers', 'pixelArt', 'cassette']);
-  const [pixelResolution, setPixelResolution] = usePreference<string>('pixel_resolution', '180', ['48', '64', '96', '120', '180', '240']);
+  const [pixelResolution, setPixelResolution] = usePreference<string>('pixel_resolution', '180', ['0', '180']);
   const [scale, setScale] = usePreference<PlayerScale>('scale', 'standard', PLAYER_SCALES);
+  const [layoutMode, setLayoutMode] = usePreference<PlayerLayoutMode>('layout_mode', 'classic', PLAYER_LAYOUT_MODES);
   const [crt, setCrt] = usePreference('crt', 'on', ['on', 'off']);
-  const [motion, setMotion] = usePreference<MotionMode>('motion', 'system', ['system', 'on', 'off']);
-  const [windowTitle, setWindowTitle] = usePreference<string>('window_title', 'PIXELTUNES');
-  const [titleEmojis, setTitleEmojis] = usePreference<string>('title_emojis', '𐙚 ⊹₊⋆☆');
+  const motion = 'on';
+  const reducedMotion = false;
+  const [windowTitle] = usePreference<string>('window_title', 'PIXELTUNES');
+  const [titleEmojis] = usePreference<string>('title_emojis', '𐙚 ⊹₊⋆☆');
   const [soundEnabled, setSoundEnabled] = useState(isSoundEffectsEnabled);
-  const [systemReduced, setSystemReduced] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
-  const reducedMotion = motion === 'off' || (motion === 'system' && systemReduced);
 
   const [modal, setModal] = useState<Modal | null>(null);
   const modalOpener = useRef<HTMLElement | null>(null);
@@ -185,7 +185,7 @@ export function App() {
     void pollSpotify();
     const interval = window.setInterval(() => {
       if (!document.hidden) void pollSpotify();
-    }, 1800);
+    }, 1000);
     const onVisible = () => { if (!document.hidden) void pollSpotify(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
@@ -206,35 +206,83 @@ export function App() {
     }
   };
 
-  const [dimensions, setDimensions] = useState(() => ({ width: innerWidth, height: innerHeight }));
+  const [dimensions, setDimensions] = useState(() => ({
+    width: typeof window !== 'undefined' ? window.innerWidth : BASE_WIDTH,
+    height: typeof window !== 'undefined' ? window.innerHeight : BASE_HEIGHT,
+  }));
   useEffect(() => {
-    const resize = () => setDimensions({ width: innerWidth, height: innerHeight });
-    const preference = matchMedia('(prefers-reduced-motion: reduce)');
-    const changeMotion = (event: MediaQueryListEvent) => setSystemReduced(event.matches);
+    const resize = () => setDimensions({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize);
-    preference.addEventListener('change', changeMotion);
     return () => {
       window.removeEventListener('resize', resize);
-      preference.removeEventListener('change', changeMotion);
     };
   }, []);
 
-  useEffect(() => {
-    window.electronAPI?.setScale(scale);
-  }, [scale]);
-  useEffect(() => window.electronAPI?.onScaleChanged(setScale), [setScale]);
+  const CARD_WIDTH = 320;
+  const CARD_HEIGHT = 460;
+  const isCard = layoutMode === 'card';
 
-  const portrait = !isElectron && dimensions.width <= 560 && dimensions.height > dimensions.width;
-  const frameWidth = portrait ? 420 : BASE_WIDTH;
-  const frameHeight = portrait ? 630 : BASE_HEIGHT;
+  const getCardDimensions = (s: PlayerScale) => {
+    if (s === 'mini' || s === 'tiny') return { width: 256, height: 368 };
+    if (s === 'large' || s === 'xl') return { width: 384, height: 552 };
+    return { width: CARD_WIDTH, height: CARD_HEIGHT };
+  };
+
+  useEffect(() => {
+    if (isElectron && window.electronAPI?.setSize && layoutMode === 'card') {
+      const { width, height } = getCardDimensions(scale);
+      window.electronAPI.setSize(width, height);
+    }
+  }, []);
+
+  const handleLayoutModeChange = (mode: PlayerLayoutMode) => {
+    setLayoutMode(mode);
+    if (isElectron && window.electronAPI?.setSize) {
+      if (mode === 'card') {
+        const { width, height } = getCardDimensions(scale);
+        window.electronAPI.setSize(width, height);
+      } else {
+        window.electronAPI.setSize(SCALES[scale].width, SCALES[scale].height);
+      }
+    }
+  };
+
+  const handleScaleChange = (nextScale: PlayerScale) => {
+    setScale(nextScale);
+    if (isElectron && window.electronAPI?.setSize) {
+      if (layoutMode === 'card') {
+        const { width, height } = getCardDimensions(nextScale);
+        window.electronAPI.setSize(width, height);
+      } else {
+        window.electronAPI.setSize(SCALES[nextScale].width, SCALES[nextScale].height);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (layoutMode !== 'card') {
+      window.electronAPI?.setScale(scale);
+    }
+  }, [scale, layoutMode]);
+  useEffect(() => window.electronAPI?.onScaleChanged((nextScale) => {
+    if (layoutMode !== 'card') {
+      setScale(nextScale);
+    }
+  }), [setScale, layoutMode]);
+
+  const portrait = !isElectron && !isCard && dimensions.width <= 560 && dimensions.height > dimensions.width;
+  const frameWidth = isCard ? CARD_WIDTH : portrait ? 420 : BASE_WIDTH;
+  const frameHeight = isCard ? CARD_HEIGHT : portrait ? 630 : BASE_HEIGHT;
   const fit = Math.min(dimensions.width / frameWidth, dimensions.height / frameHeight);
-  const zoomScale = portrait
+  const zoomScale = isElectron
+    ? fit
+    : isCard
+    ? (scale === 'mini' || scale === 'tiny' ? Math.min(0.85, fit * 0.78) : scale === 'large' || scale === 'xl' ? Math.min(1.3, fit * 1.15) : Math.min(1.15, fit * 0.95))
+    : portrait
     ? fit * { tiny: 0.72, mini: 0.82, standard: 0.92, large: 0.97, xl: 1 }[scale]
     : Math.min(
         fit * 0.92,
-        isElectron
-          ? Infinity
-          : scale === 'standard'
+        scale === 'standard'
           ? Math.max(1, Math.min(1.2, fit * 0.85))
           : SCALES[scale].width / BASE_WIDTH
       );
@@ -257,10 +305,10 @@ export function App() {
 
   return (
     <div
-      className="w-full min-h-screen relative flex items-center justify-center overflow-hidden"
+      className={`w-full ${isElectron ? 'h-full' : 'min-h-screen'} relative flex items-center justify-center overflow-hidden`}
       data-motion={reducedMotion ? 'off' : 'on'}
       data-theme={themeId}
-      data-layout={portrait ? 'portrait' : 'landscape'}
+      data-layout={isCard ? 'card' : portrait ? 'portrait' : 'landscape'}
       style={{ backgroundColor: isElectron ? 'transparent' : theme.bodyBg }}
     >
       {!isElectron && (
@@ -286,65 +334,80 @@ export function App() {
         </>
       )}
 
-      <main className="w-full min-h-screen flex items-center justify-center z-10 relative p-4">
+      <main className={`w-full ${isElectron ? 'h-full' : 'min-h-screen p-4'} flex items-center justify-center z-10 relative overflow-hidden bg-transparent`}>
         <div
-          className="relative shrink-0"
-          style={{ width: frameWidth, height: frameHeight, transform: `scale(${zoomScale})` }}
+          className="relative shrink-0 overflow-hidden"
+          style={{
+            width: `${Math.round(frameWidth * zoomScale)}px`,
+            height: `${Math.round(frameHeight * zoomScale)}px`,
+          }}
         >
-          <div className="w-full h-full" ref={(element) => { if (element) element.inert = Boolean(modal); }}>
-            <RetroWindow
-              theme={theme}
-              artMode={artMode}
-              pixelResolution={Number(pixelResolution)}
-              reducedMotion={reducedMotion}
-              crtEnabled={crt === 'on'}
-              windowTitle={windowTitle}
-              titleEmojis={titleEmojis}
-              scale={scale}
-              onScaleChange={setScale}
-              isSpotifyConnected={isSpotifyConnected}
-              spotifyPlayback={spotifyPlayback}
-              onPollSpotify={pollSpotify}
-              onOpenSpotifyModal={(opener) => openModal('spotify', opener)}
-              onOpenSettingsModal={(opener) => openModal('settings', opener)}
-              isModalOpen={Boolean(modal)}
-            />
-          </div>
+          <div
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: `${frameWidth}px`,
+              height: `${frameHeight}px`,
+              transform: `scale(${zoomScale})`,
+              transformOrigin: 'top left',
+            }}
+          >
+            <div className="w-full h-full" ref={(element) => { if (element) element.inert = Boolean(modal); }}>
+              <RetroWindow
+                theme={theme}
+                artMode={artMode}
+                pixelResolution={Number(pixelResolution)}
+                reducedMotion={reducedMotion}
+                crtEnabled={crt === 'on'}
+                windowTitle={windowTitle}
+                titleEmojis={titleEmojis}
+                scale={scale}
+                onScaleChange={handleScaleChange}
+                layoutMode={layoutMode}
+                onLayoutModeChange={handleLayoutModeChange}
+                isSpotifyConnected={isSpotifyConnected}
+                spotifyPlayback={spotifyPlayback}
+                onPollSpotify={pollSpotify}
+                onOpenSpotifyModal={(opener) => openModal('spotify', opener)}
+                onOpenSettingsModal={(opener) => openModal('settings', opener)}
+                isModalOpen={Boolean(modal)}
+              />
+            </div>
 
-          {modal && (
-            <PlayerDialog key={modal} label={labels[modal]} opener={modalOpener.current} onClose={closeModal}>
-              {modal === 'connect' && (
-                <QuickConnectModal isOpen onClose={closeModal} needsScopeUpgrade={needsScopeUpgrade} authError={authError}
-                  onRetry={resetAuthError} onOpenSetup={() => openModal('spotify')} />
-              )}
-              {modal === 'autoLaunch' && <AutoLaunchPermissionModal isOpen onClose={closeModal} />}
-              {modal === 'spotify' && (
-                <SpotifyModal
-                  isOpen onClose={closeModal} isLoggedIn={isSpotifyConnected} userName={userName}
-                  authError={authError} authForbidden={authForbidden} onRetryAuth={resetAuthError}
-                  onLoginSuccess={() => {
-                    session.current++;
-                    connect(getStoredUserName());
-                  }}
-                  onLogout={disconnect}
-                  onPlaybackStarted={pollSpotify}
-                />
-              )}
-              {modal === 'settings' && (
-                <SettingsModal
-                  isOpen onClose={closeModal} currentTheme={theme} onThemeSelect={(next) => setThemeId(next.id)}
-                  artMode={artMode} onArtModeSelect={setArtMode}
-                  pixelResolution={Number(pixelResolution)} onPixelResolutionChange={(value) => setPixelResolution(String(value))}
-                  crtEnabled={crt === 'on'} onToggleCrt={() => setCrt(crt === 'on' ? 'off' : 'on')}
-                  motion={motion} onMotionChange={setMotion}
-                  soundEnabled={soundEnabled} onToggleSound={setSoundEnabled}
-                  windowTitle={windowTitle} onWindowTitleChange={setWindowTitle}
-                  titleEmojis={titleEmojis} onTitleEmojisChange={setTitleEmojis}
-                  scale={scale} onScaleChange={setScale}
-                />
-              )}
-            </PlayerDialog>
-          )}
+            {modal && (
+              <PlayerDialog key={modal} label={labels[modal]} opener={modalOpener.current} onClose={closeModal}>
+                {modal === 'connect' && (
+                  <QuickConnectModal isOpen onClose={closeModal} needsScopeUpgrade={needsScopeUpgrade} authError={authError}
+                    onRetry={resetAuthError} onOpenSetup={() => openModal('spotify')} />
+                )}
+                {modal === 'autoLaunch' && <AutoLaunchPermissionModal isOpen onClose={closeModal} />}
+                {modal === 'spotify' && (
+                  <SpotifyModal
+                    isOpen onClose={closeModal} isLoggedIn={isSpotifyConnected} userName={userName}
+                    authError={authError} authForbidden={authForbidden} onRetryAuth={resetAuthError}
+                    onLoginSuccess={() => {
+                      session.current++;
+                      connect(getStoredUserName());
+                    }}
+                    onLogout={disconnect}
+                    onPlaybackStarted={pollSpotify}
+                  />
+                )}
+                {modal === 'settings' && (
+                  <SettingsModal
+                    isOpen onClose={closeModal} currentTheme={theme} onThemeSelect={(next) => setThemeId(next.id)}
+                    artMode={artMode} onArtModeSelect={setArtMode}
+                    pixelResolution={Number(pixelResolution)} onPixelResolutionChange={(value) => setPixelResolution(String(value))}
+                    crtEnabled={crt === 'on'} onToggleCrt={() => setCrt(crt === 'on' ? 'off' : 'on')}
+                    soundEnabled={soundEnabled} onToggleSound={setSoundEnabled}
+                    scale={scale} onScaleChange={handleScaleChange}
+                    layoutMode={layoutMode} onLayoutModeChange={handleLayoutModeChange}
+                  />
+                )}
+              </PlayerDialog>
+            )}
+          </div>
         </div>
       </main>
 

@@ -15,6 +15,7 @@ let tray = null;
 let isQuitting = false;
 let isAlwaysOnTop = true;
 let playerScale = 'standard';
+let currentAspectRatio = 720 / 410;
 let persistentAuthServer = null;
 
 // Spotify PKCE Public Client (No Client Secret Required Anywhere!)
@@ -312,8 +313,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 720,
     height: 410,
-    minWidth: 420,
-    minHeight: 240,
+    minWidth: 200,
+    minHeight: 180,
     x: Math.round(screenWidth - 740),
     y: 80,
     show: !tray,
@@ -333,8 +334,6 @@ function createWindow() {
       sandbox: true,
     },
   });
-
-  mainWindow.setAspectRatio(720 / 410);
 
   if (process.platform === 'darwin' && isAlwaysOnTop) {
     mainWindow.setAlwaysOnTop(true, 'floating', 1);
@@ -400,6 +399,10 @@ function createWindow() {
   });
 
   mainWindow.on('restore', () => {
+    if (process.platform === 'darwin' && isAlwaysOnTop) {
+      mainWindow.setAlwaysOnTop(true, 'floating', 1);
+      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    }
     mainWindow.show();
     mainWindow.focus();
   });
@@ -476,8 +479,7 @@ function createMenuBar() {
 
 // Accept IPC only from the main app document.
 function fromApp(event) {
-  return mainWindow && event.sender === mainWindow.webContents &&
-    event.senderFrame === mainWindow.webContents.mainFrame;
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 }
 
 function handle(channel, handler) {
@@ -488,7 +490,11 @@ function handle(channel, handler) {
 }
 
 ipcMain.on('window:minimize', (event) => {
-  if (!fromApp(event)) return;
+  if (!fromApp(event) || !mainWindow) return;
+  if (process.platform === 'darwin') {
+    mainWindow.setVisibleOnAllWorkspaces(false);
+    mainWindow.setAlwaysOnTop(false);
+  }
   mainWindow.minimize();
 });
 
@@ -512,6 +518,7 @@ handle('window:toggle-always-on-top', () => setAlwaysOnTop(!isAlwaysOnTop));
 handle('window:get-always-on-top', () => isAlwaysOnTop);
 
 function resizePlayer(width, height) {
+  if (!mainWindow) return;
   const bounds = mainWindow.getBounds();
   const { workArea } = screen.getDisplayMatching(bounds);
   const fit = Math.min(1, workArea.width / width, workArea.height / height);
@@ -542,7 +549,7 @@ ipcMain.on('window:set-size', (event, dimensions) => {
   const { width, height } = dimensions || {};
   if (!Number.isFinite(width) || !Number.isFinite(height)) return;
   playerScale = null;
-  resizePlayer(Math.max(420, width), Math.max(240, height));
+  resizePlayer(Math.max(200, width), Math.max(180, height));
 });
 
 handle('auth:has-session', async () => Boolean(await loadRefreshToken()));
@@ -594,7 +601,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (app.isReady()) showPlayer();
+    if (app.isReady()) {
+      showPlayer(false);
+      if (mainWindow) mainWindow.reload();
+    }
   });
   app.on('before-quit', () => { isQuitting = true; });
   app.on('will-quit', () => {

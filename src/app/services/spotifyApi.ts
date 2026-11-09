@@ -298,6 +298,47 @@ export async function playTrack(
   return playSelection(contextUri ? { context_uri: contextUri, offset: { uri } } : { uris }, deviceId);
 }
 
+let cachedUserId: string | null = null;
+
+export async function getUserId(): Promise<string | null> {
+  if (cachedUserId) return cachedUserId;
+  try {
+    const stored = localStorage.getItem('pixeltunes_user_id');
+    if (stored) {
+      cachedUserId = stored;
+      return stored;
+    }
+  } catch {}
+  try {
+    const profile = await getUserProfile();
+    if (profile?.id) {
+      cachedUserId = profile.id;
+      try { localStorage.setItem('pixeltunes_user_id', profile.id); } catch {}
+      return profile.id;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Play a track from user's Liked Songs collection
+ */
+export async function playLikedSong(
+  uri: string,
+  deviceId?: string,
+  remainingUris: string[] = []
+): Promise<boolean> {
+  const userId = await getUserId();
+  if (userId) {
+    const ok = await playSelection({
+      context_uri: `spotify:user:${userId}:collection`,
+      offset: { uri },
+    }, deviceId);
+    if (ok) return true;
+  }
+  return playTrack(uri, deviceId, remainingUris);
+}
+
 export function playPlaylist(contextUri: string, deviceId?: string): Promise<boolean> {
   return playSelection({ context_uri: contextUri }, deviceId);
 }
@@ -329,10 +370,11 @@ export async function getUserPlaylists(offset = 0): Promise<{ playlists: Spotify
  * Get Tracks in a Playlist
  */
 export async function getPlaylistTracks(playlistId: string, limit: number = 50): Promise<any[]> {
+  const cleanId = playlistId.replace(/^spotify:playlist:/, '').split('?')[0];
   try {
-    let res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(playlistId)}/items?limit=${limit}`);
+    let res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(cleanId)}/items?limit=${limit}`);
     if (res.status === 404) {
-      res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(playlistId)}/tracks?limit=${limit}`);
+      res = await spotifyRequest('GET', `/playlists/${encodeURIComponent(cleanId)}/tracks?limit=${limit}`);
     }
     if (res.ok) {
       const data = await res.json();

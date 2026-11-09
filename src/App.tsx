@@ -6,6 +6,8 @@ export default function App() {
   const [view, setView] = useState<'landing' | 'player'>(() => {
     // If running in Electron desktop app, always render the player:
     if (typeof window !== 'undefined' && window.electronAPI) {
+      document.documentElement.classList.add('is-electron');
+      document.body.classList.add('is-electron');
       return 'player';
     }
 
