@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles, Radio, ShieldCheck, Zap, Disc3, Music2 } from 'lucide-react';
 import { DownloadButtons } from './DownloadButtons';
+import { InteractivePixelGrid } from './InteractivePixelGrid';
 import { useScrollParallax } from '../hooks/useScrollAnimation';
 
 interface HeroProps {
@@ -23,6 +24,9 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
             'radial-gradient(circle at 50% 15%, rgba(175, 80, 255, 0.18) 0%, rgba(143, 162, 212, 0.12) 30%, rgba(25, 18, 68, 0.95) 75%, #0a071d 100%)',
         }}
       />
+
+      {/* Interactive Pixelated Background Grid with smooth color hover trails */}
+      <InteractivePixelGrid cellSize={26} />
 
       {/* Retro Grid Floor Accent */}
       <div
