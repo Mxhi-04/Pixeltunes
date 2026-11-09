@@ -50,6 +50,7 @@ test('Electron sandbox, window controls, and loopback OAuth work with an isolate
       await connect.getByRole('button', { name: /continue in lo-fi/i }).click();
       const play = page.getByTestId('main-play-btn');
       await play.click();
+      await expect(play).toHaveAttribute('title', 'Pause');
       await page.getByRole('button', { name: 'Hide to Menu Bar' }).click();
       await expect.poll(visible).toBe(false);
       await expect.poll(async () => Number(await page.getByRole('slider', { name: 'Playback position' }).inputValue()))
