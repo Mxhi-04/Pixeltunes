@@ -15,6 +15,7 @@ let tray = null;
 let isQuitting = false;
 let isAlwaysOnTop = true;
 let playerScale = 'standard';
+let playerLayoutMode = 'classic';
 let currentAspectRatio = 720 / 410;
 let persistentAuthServer = null;
 
@@ -313,8 +314,8 @@ function createWindow() {
   mainWindow = new BrowserWindow({
     width: 720,
     height: 410,
-    minWidth: 200,
-    minHeight: 180,
+    minWidth: 160,
+    minHeight: 28,
     x: Math.round(screenWidth - 740),
     y: 80,
     show: !tray,
@@ -437,10 +438,133 @@ function showPlayer(fromTray = false) {
   mainWindow.focus();
 }
 
+let currentPlaybackInfo = { title: '', artist: '', isPlaying: false };
+
+function buildTrayMenu() {
+  const isPlayerActive = mainWindow?.isVisible() && !mainWindow?.isMinimized();
+  const trackLabel = currentPlaybackInfo.title
+    ? `${currentPlaybackInfo.isPlaying ? '▶' : '❚❚'} ${currentPlaybackInfo.title}${currentPlaybackInfo.artist ? ` - ${currentPlaybackInfo.artist}` : ''}`
+    : 'PixelTunes: Nothing Playing';
+
+  return Menu.buildFromTemplate([
+    { label: trackLabel, enabled: false },
+    { type: 'separator' },
+    {
+      label: currentPlaybackInfo.isPlaying ? '❚❚ Pause' : '▶ Play',
+      click: () => mainWindow?.webContents.send('playback:action', 'toggle'),
+    },
+    {
+      label: '▶▶ Next Track',
+      click: () => mainWindow?.webContents.send('playback:action', 'next'),
+    },
+    {
+      label: '◀◀ Previous Track',
+      click: () => mainWindow?.webContents.send('playback:action', 'previous'),
+    },
+    { type: 'separator' },
+    isPlayerActive
+      ? { label: 'Hide Player', click: () => mainWindow?.hide() }
+      : { label: 'Show Player', click: () => showPlayer(true) },
+    {
+      label: 'Layout Mode',
+      submenu: [
+        {
+          label: 'Classic Player',
+          type: 'radio',
+          checked: playerLayoutMode === 'classic',
+          click: () => {
+            playerLayoutMode = 'classic';
+            mainWindow?.webContents.send('window:layout-changed', 'classic');
+            showPlayer(true);
+          },
+        },
+        {
+          label: 'Music Card',
+          type: 'radio',
+          checked: playerLayoutMode === 'card',
+          click: () => {
+            playerLayoutMode = 'card';
+            mainWindow?.webContents.send('window:layout-changed', 'card');
+            showPlayer(true);
+          },
+        },
+        {
+          label: 'iPod Mini',
+          type: 'radio',
+          checked: playerLayoutMode === 'ipod',
+          click: () => {
+            playerLayoutMode = 'ipod';
+            mainWindow?.webContents.send('window:layout-changed', 'ipod');
+            showPlayer(true);
+          },
+        },
+      ],
+    },
+    {
+      label: 'Window Size',
+      submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
+        label: `${label} (${width} × ${height})`,
+        type: 'radio',
+        checked: playerScale === id,
+        click: () => {
+          playerScale = id;
+          applyPlayerScale(id);
+          mainWindow?.webContents.send('window:scale-changed', id);
+          showPlayer(true);
+        },
+      })),
+    },
+    {
+      label: 'Keep Player on Top',
+      type: 'checkbox',
+      checked: isAlwaysOnTop,
+      click: () => setAlwaysOnTop(!isAlwaysOnTop),
+    },
+    { label: 'Open Spotify', click: () => { void openSpotify(); } },
+    { type: 'separator' },
+    {
+      label: 'Quit PixelTunes',
+      click: () => {
+        isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+}
+
+function updateTrayDisplay() {
+  if (!tray) return;
+  if (!currentPlaybackInfo.title) {
+    tray.setTitle(' ♪ PixelTunes');
+    tray.setToolTip('PixelTunes');
+  } else {
+    const icon = currentPlaybackInfo.isPlaying ? '▶' : '❚❚';
+    const text = currentPlaybackInfo.artist
+      ? `${currentPlaybackInfo.title} · ${currentPlaybackInfo.artist}`
+      : currentPlaybackInfo.title;
+    const shortText = text.length > 25 ? text.slice(0, 24) + '…' : text;
+    tray.setTitle(` ${icon} ${shortText}`);
+    tray.setToolTip(`PixelTunes: ${text}`);
+  }
+}
+
 function createMenuBar() {
-  tray = new Tray(path.join(__dirname, 'assets', 'PixelTunesTemplate.png'));
+  const iconPath = path.join(__dirname, 'assets', 'PixelTunesTemplate.png');
+  let icon = null;
+  try {
+    icon = nativeImage.createFromPath(iconPath);
+    if (!icon.isEmpty()) {
+      icon.setTemplateImage(true);
+    }
+  } catch (err) {
+    console.warn('[PixelTunes] Could not load tray icon:', err.message);
+  }
+
+  tray = icon && !icon.isEmpty() ? new Tray(icon) : new Tray(iconPath);
+  tray.setTitle(' ♪ PixelTunes');
   tray.setToolTip('PixelTunes');
   tray.setIgnoreDoubleClickEvents(true);
+
   tray.on('click', () => {
     if (mainWindow?.isMinimized()) {
       mainWindow.restore();
@@ -452,28 +576,9 @@ function createMenuBar() {
       showPlayer(true);
     }
   });
+
   tray.on('right-click', () => {
-    const isPlayerActive = mainWindow?.isVisible() && !mainWindow?.isMinimized();
-    tray.popUpContextMenu(Menu.buildFromTemplate([
-      isPlayerActive
-        ? { label: 'Hide Player', click: () => mainWindow?.hide() }
-        : { label: 'Show Player', click: () => showPlayer(true) },
-      { label: 'Window Size', submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
-        label: `${label} (${width} × ${height})`,
-        type: 'radio',
-        checked: playerScale === id,
-        click: () => {
-          applyPlayerScale(id);
-          mainWindow.webContents.send('window:scale-changed', id);
-          showPlayer(true);
-        },
-      })) },
-      { label: 'Keep Player on Top', type: 'checkbox', checked: isAlwaysOnTop,
-        click: () => setAlwaysOnTop(!isAlwaysOnTop) },
-      { label: 'Open Spotify', click: () => { void openSpotify(); } },
-      { type: 'separator' },
-      { label: 'Quit PixelTunes', click: () => app.quit() },
-    ]));
+    tray.popUpContextMenu(buildTrayMenu());
   });
 }
 
@@ -517,19 +622,48 @@ function setAlwaysOnTop(enabled) {
 handle('window:toggle-always-on-top', () => setAlwaysOnTop(!isAlwaysOnTop));
 handle('window:get-always-on-top', () => isAlwaysOnTop);
 
-function resizePlayer(width, height) {
+function resizePlayer(width, height, options = {}) {
   if (!mainWindow) return;
-  const bounds = mainWindow.getBounds();
-  const { workArea } = screen.getDisplayMatching(bounds);
-  const fit = Math.min(1, workArea.width / width, workArea.height / height);
+  const currentBounds = mainWindow.getBounds();
+  const display = screen.getDisplayMatching(currentBounds);
+  const { workArea, bounds: screenBounds } = display;
+  const isMenuBar = Boolean(options.dockToMenuBar || options.isMenuBar || playerLayoutMode === 'capsule');
+
+  const fit = Math.min(1, screenBounds.width / width, screenBounds.height / height);
   const w = Math.round(width * fit);
   const h = Math.round(height * fit);
+
+  let newX = currentBounds.x;
+  let newY = currentBounds.y;
+
+  if (options.dockToMenuBar) {
+    const anchor = tray?.getBounds();
+    if (anchor && anchor.width > 0 && anchor.x > 0) {
+      newX = Math.round(anchor.x + anchor.width / 2 - w / 2);
+    } else {
+      newX = Math.round(screenBounds.x + (screenBounds.width - w) / 2);
+    }
+    // Dock right in the menu bar at the top of the MacBook screen
+    newY = screenBounds.y + 2;
+  } else if (isMenuBar) {
+    newX = Math.max(screenBounds.x, Math.min(newX, screenBounds.x + screenBounds.width - w));
+    newY = Math.max(screenBounds.y, Math.min(newY, screenBounds.y + screenBounds.height - h));
+  } else {
+    newX = Math.max(workArea.x, Math.min(newX, workArea.x + workArea.width - w));
+    newY = Math.max(workArea.y, Math.min(newY, workArea.y + workArea.height - h));
+  }
+
   mainWindow.setBounds({
-    x: Math.max(workArea.x, Math.min(bounds.x, workArea.x + workArea.width - w)),
-    y: Math.max(workArea.y, Math.min(bounds.y, workArea.y + workArea.height - h)),
+    x: newX,
+    y: newY,
     width: w,
     height: h,
   });
+
+  if (process.platform === 'darwin' && isMenuBar) {
+    mainWindow.setAlwaysOnTop(true, 'status', 1);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  }
 }
 
 function applyPlayerScale(scale) {
@@ -546,10 +680,34 @@ ipcMain.on('window:set-scale', (event, scale) => {
 
 ipcMain.on('window:set-size', (event, dimensions) => {
   if (!fromApp(event)) return;
-  const { width, height } = dimensions || {};
+  const { width, height, dockToMenuBar, isMenuBar } = dimensions || {};
   if (!Number.isFinite(width) || !Number.isFinite(height)) return;
   playerScale = null;
-  resizePlayer(Math.max(200, width), Math.max(180, height));
+  resizePlayer(Math.max(160, width), Math.max(28, height), { dockToMenuBar, isMenuBar });
+});
+
+ipcMain.on('window:set-layout-mode', (event, mode) => {
+  if (!fromApp(event) || typeof mode !== 'string') return;
+  playerLayoutMode = mode;
+});
+
+ipcMain.on('tray:set-playback-info', (event, info) => {
+  if (!fromApp(event)) return;
+  if (info) {
+    currentPlaybackInfo = {
+      title: (info.title || '').trim(),
+      artist: (info.artist || '').trim(),
+      isPlaying: Boolean(info.isPlaying),
+    };
+    updateTrayDisplay();
+  }
+});
+
+handle('window:dock-to-menubar', () => {
+  if (!mainWindow) return false;
+  const bounds = mainWindow.getBounds();
+  resizePlayer(bounds.width, bounds.height, { dockToMenuBar: true, isMenuBar: true });
+  return true;
 });
 
 handle('auth:has-session', async () => Boolean(await loadRefreshToken()));

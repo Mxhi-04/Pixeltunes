@@ -59,6 +59,7 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
   onOpenSettings,
   progressMs,
   durationMs,
+  seekTo,
   volume,
   onVolumeChange,
   currentTitle,
@@ -83,12 +84,16 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
   onTrackPlayed,
   onBuiltinSelect,
 }) => {
-  // Screen mode: 'menu' (classic iPod list) or 'nowPlaying' or 'queue'
-  const [screenMode, setScreenMode] = useState<'menu' | 'nowPlaying' | 'queue'>(
-    isPlaying ? 'nowPlaying' : 'menu'
-  );
+  // Screen mode: 'menu' (classic iPod list) or 'nowPlaying' (classic color Now Playing) or 'queue'
+  const [screenMode, setScreenMode] = useState<'menu' | 'nowPlaying' | 'queue'>('nowPlaying');
   const [selectedMenuIndex, setSelectedMenuIndex] = useState(0);
-  const [backlightMode, setBacklightMode] = useState<'cyan' | 'classic' | 'pink'>('cyan');
+  const [backlightMode, setBacklightMode] = useState<'grayWhite' | 'cyan' | 'pink'>('grayWhite');
+
+  useEffect(() => {
+    if (isPlaying) {
+      setScreenMode('nowPlaying');
+    }
+  }, [isPlaying, currentTitle]);
 
   // Menu items exactly like reference image + interactive options
   const menuItems = [
@@ -104,11 +109,11 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
       },
     },
     {
-      label: `Backlight: ${backlightMode.toUpperCase()}`,
+      label: `Backlight: ${backlightMode === 'grayWhite' ? 'OFF' : backlightMode.toUpperCase()}`,
       hasArrow: false,
       action: () => {
         playClickSound();
-        setBacklightMode((prev) => (prev === 'cyan' ? 'classic' : prev === 'classic' ? 'pink' : 'cyan'));
+        setBacklightMode((prev) => (prev === 'grayWhite' ? 'cyan' : prev === 'cyan' ? 'pink' : 'grayWhite'));
       },
     },
     {
@@ -166,11 +171,11 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
 
   // LCD Backlight colors
   const lcdBg =
-    backlightMode === 'cyan'
-      ? 'bg-[#98b8c8]'
-      : backlightMode === 'pink'
-      ? 'bg-[#d8a8be]'
-      : 'bg-[#a2aeb3]';
+    backlightMode === 'grayWhite'
+      ? 'bg-[#e2e6eb]'
+      : backlightMode === 'cyan'
+      ? 'bg-[#b6d4e2]'
+      : 'bg-[#ead0db]';
 
   const lcdText = '#121e2d';
 
@@ -246,33 +251,55 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
         </div>
 
         {/* Inset LCD Screen Bezel */}
-        <div className="w-[220px] h-[175px] mt-2 border-3 border-[#191244] rounded-[6px] shadow-inner p-1.5 bg-[#84949f] flex flex-col shrink-0 relative overflow-hidden">
+        <div className="w-[220px] h-[175px] mt-2 border-3 border-[#191244] rounded-[6px] shadow-inner p-1.5 bg-[#b8bec5] flex flex-col shrink-0 relative overflow-hidden">
           {/* LCD Screen Display */}
           <div
-            className={`w-full h-full border border-[#191244]/40 rounded-[3px] flex flex-col overflow-hidden relative ${lcdBg} text-[#121e2d]`}
-            style={{ color: lcdText }}
+            className={`w-full h-full border border-[#191244]/40 rounded-[3px] flex flex-col overflow-hidden relative ${
+              screenMode === 'nowPlaying' ? 'bg-[#ebedef] text-[#111]' : `${lcdBg} text-[#121e2d]`
+            }`}
+            style={{ color: screenMode === 'nowPlaying' ? '#111' : lcdText }}
           >
             {/* LCD Screen Header Bar */}
-            <div className="h-5 px-2 border-b border-[#121e2d]/30 flex items-center justify-between shrink-0 font-pixel text-[8.5px] font-bold bg-[#121e2d]/10">
-              {/* Play / Pause indicator */}
-              <div className="flex items-center gap-1 w-6">
-                <span>{isPlaying ? '▶' : '❚❚'}</span>
-              </div>
+            {screenMode === 'nowPlaying' ? (
+              <div className="h-[21px] px-2 bg-gradient-to-b from-[#eaebee] via-[#dfe2e6] to-[#cbcfd4] border-b border-[#adb1b7] flex items-center justify-between shrink-0 select-none shadow-[inset_0_1px_0_rgba(255,255,255,0.8)]">
+                {/* Left: "Now Playing" */}
+                <span className="font-sans font-bold text-[10px] text-[#222] tracking-tight">
+                  Now Playing
+                </span>
 
-              {/* Title */}
-              <div className="truncate text-center flex-1 font-pixel tracking-wide text-[8.5px]">
-                {screenMode === 'menu' ? 'iPod mini' : screenMode === 'queue' ? 'Playlists' : 'Now Playing'}
-              </div>
-
-              {/* Battery Indicator */}
-              <div className="w-5 flex items-center justify-end">
-                <div className="w-3.5 h-2 border border-[#121e2d] rounded-[1px] p-[1px] flex gap-[1px]">
-                  <div className="w-1 h-full bg-[#121e2d]" />
-                  <div className="w-1 h-full bg-[#121e2d]" />
+                {/* Right: "100%" + Battery */}
+                <div className="flex items-center gap-1">
+                  <span className="font-sans font-semibold text-[9px] text-[#333]">100%</span>
+                  <div className="flex items-center">
+                    <div className="w-[16px] h-[8px] border border-[#555] rounded-[1.5px] p-[1px] bg-white flex items-center">
+                      <div className="w-full h-full bg-[#5fc73b] rounded-[0.5px]" />
+                    </div>
+                    <div className="w-[1.5px] h-[3.5px] bg-[#555] rounded-r-[0.5px] -ml-[0.5px]" />
+                  </div>
                 </div>
-                <div className="w-[1px] h-1 bg-[#121e2d]" />
               </div>
-            </div>
+            ) : (
+              <div className="h-5 px-2 border-b border-[#121e2d]/30 flex items-center justify-between shrink-0 font-pixel text-[8.5px] font-bold bg-[#121e2d]/10">
+                {/* Play / Pause indicator */}
+                <div className="flex items-center gap-1 w-6">
+                  <span>{isPlaying ? '▶' : '❚❚'}</span>
+                </div>
+
+                {/* Title */}
+                <div className="truncate text-center flex-1 font-pixel tracking-wide text-[8.5px]">
+                  {screenMode === 'menu' ? 'iPod mini' : 'Playlists'}
+                </div>
+
+                {/* Battery Indicator */}
+                <div className="w-5 flex items-center justify-end">
+                  <div className="w-3.5 h-2 border border-[#121e2d] rounded-[1px] p-[1px] flex gap-[1px]">
+                    <div className="w-1 h-full bg-[#121e2d]" />
+                    <div className="w-1 h-full bg-[#121e2d]" />
+                  </div>
+                  <div className="w-[1px] h-1 bg-[#121e2d]" />
+                </div>
+              </div>
+            )}
 
             {/* LCD Screen Content Area */}
             <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
@@ -301,17 +328,46 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
                   })}
                 </div>
               ) : screenMode === 'nowPlaying' ? (
-                /* iPod Now Playing Screen */
+                /* iPod Color Now Playing Screen */
                 <div
-                  className="flex-1 flex flex-col justify-between p-2 cursor-pointer font-pixel"
+                  className="flex-1 flex flex-col justify-between px-2.5 pt-2 pb-1.5 cursor-pointer bg-[#ebedef] select-none"
                   onClick={() => setScreenMode('menu')}
-                  title="Click to switch to Menu"
+                  title="Click to view Menu"
                 >
-                  <div className="flex gap-2 items-center">
-                    {/* Tiny Square Album Art */}
-                    <div className="w-11 h-11 border-2 border-[#121e2d] bg-[#121e2d]/15 shrink-0 overflow-hidden relative">
+                  {/* Middle content: Track metadata & Album Art */}
+                  <div className="flex items-start justify-between gap-2 flex-1 min-h-0 pt-1">
+                    {/* Left: Metadata */}
+                    <div className="flex-1 min-w-0 pr-1 flex flex-col justify-start">
+                      <div
+                        className="font-sans font-extrabold text-[13px] text-[#111] leading-[1.18] line-clamp-2 break-words"
+                        title={currentTitle}
+                      >
+                        {currentTitle || 'No Track Playing'}
+                      </div>
+                      <div
+                        className="font-sans font-semibold text-[10px] text-[#333] mt-1.5 line-clamp-1 truncate"
+                        title={currentArtist}
+                      >
+                        {currentArtist || 'Unknown Artist'}
+                      </div>
+                      {currentAlbum && (
+                        <div
+                          className="font-sans text-[8.5px] text-[#666] mt-0.5 line-clamp-1 truncate"
+                          title={currentAlbum}
+                        >
+                          {currentAlbum}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Right: Square Album Artwork */}
+                    <div className="w-[90px] h-[90px] shrink-0 rounded-[5px] border border-black/25 shadow-[0_2px_5px_rgba(0,0,0,0.3)] overflow-hidden bg-[#191244] relative">
                       {albumArtUrl ? (
-                        <img src={albumArtUrl} alt="" className="w-full h-full object-cover" />
+                        <img
+                          src={albumArtUrl}
+                          alt={currentTitle}
+                          className="w-full h-full object-cover select-none pointer-events-none"
+                        />
                       ) : (
                         <PixelCanvas
                           isPlaying={isPlaying}
@@ -329,37 +385,37 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
                         />
                       )}
                     </div>
-
-                    {/* Track Info */}
-                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                      <div className="font-bold text-[9px] truncate" title={currentTitle}>
-                        {currentTitle}
-                      </div>
-                      <div className="text-[7.5px] font-silkscreen truncate opacity-85 mt-0.5" title={currentArtist}>
-                        {currentArtist}
-                      </div>
-                      {currentAlbum && (
-                        <div className="text-[6.5px] font-silkscreen truncate opacity-70 mt-0.5" title={currentAlbum}>
-                          {currentAlbum}
-                        </div>
-                      )}
-                    </div>
                   </div>
 
-                  {/* Progress Slider */}
-                  <div className="w-full mt-1">
-                    <div className="w-full h-1.5 bg-[#121e2d]/20 border border-[#121e2d] relative rounded-[1px] overflow-hidden">
+                  {/* Bottom: Progress Bar & Timestamps */}
+                  <div className="w-full flex items-center gap-2 pt-1 pb-0.5 shrink-0 select-none">
+                    <span className="font-sans text-[8.5px] font-semibold text-[#444] min-w-[24px] text-left">
+                      {formatTime(progressMs)}
+                    </span>
+
+                    <div
+                      className="flex-1 h-[6px] bg-[#cbced4] rounded-full border border-[#b8bac0] relative overflow-hidden cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (durationMs > 0 && seekTo) {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const clickPos = (e.clientX - rect.left) / rect.width;
+                          seekTo(Math.floor(clickPos * durationMs));
+                        }
+                      }}
+                      title="Seek position"
+                    >
                       <div
-                        className="h-full bg-[#121e2d]"
+                        className="h-full bg-gradient-to-r from-[#2f669f] to-[#4279b3] rounded-full transition-all duration-150"
                         style={{
                           width: `${durationMs > 0 ? Math.min(100, (progressMs / durationMs) * 100) : 0}%`,
                         }}
                       />
                     </div>
-                    <div className="flex justify-between text-[7px] font-silkscreen mt-0.5 font-bold opacity-80">
-                      <span>{formatTime(progressMs)}</span>
-                      <span>-{formatTime(Math.max(0, durationMs - progressMs))}</span>
-                    </div>
+
+                    <span className="font-sans text-[8.5px] font-semibold text-[#444] min-w-[28px] text-right">
+                      -{formatTime(Math.max(0, durationMs - progressMs))}
+                    </span>
                   </div>
                 </div>
               ) : (

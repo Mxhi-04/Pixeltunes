@@ -1,5 +1,5 @@
 import 'react';
-import type { PlayerScale } from './scale';
+import type { PlayerScale, PlayerLayoutMode } from './scale';
 
 declare module 'react' {
   interface CSSProperties {
@@ -16,7 +16,12 @@ export interface ElectronAPI {
   getAlwaysOnTop: () => Promise<boolean>;
   setScale: (scale: PlayerScale) => void;
   onScaleChanged: (callback: (scale: PlayerScale) => void) => () => void;
-  setSize: (width: number, height: number) => void;
+  setSize: (width: number, height: number, options?: { dockToMenuBar?: boolean; isMenuBar?: boolean }) => void;
+  dockToMenuBar?: () => Promise<boolean>;
+  setLayoutMode?: (mode: PlayerLayoutMode) => void;
+  onLayoutModeChanged?: (callback: (mode: PlayerLayoutMode) => void) => () => void;
+  setPlaybackInfo?: (info: { title: string; artist?: string; isPlaying: boolean }) => void;
+  onPlaybackAction?: (callback: (action: 'toggle' | 'next' | 'previous') => void) => () => void;
   authLogin?: (clientId?: string, presentation?: { theme: string | null; motion: string | null }) =>
     Promise<{ success: boolean; error?: string }>;
   authRefresh?: () => Promise<{ access_token?: string; expires_in?: number; error?: string }>;
@@ -32,4 +37,3 @@ declare global {
     electronAPI?: ElectronAPI;
   }
 }
-

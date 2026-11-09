@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { PixelCanvas } from './PixelCanvas';
 import { RetroQueueView } from './RetroQueueView';
 import { RetroIpodView } from './RetroIpodView';
+import { RetroCapsuleWidget } from './RetroCapsuleWidget';
 import { PixelVisualizer } from './PixelVisualizer';
 import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
@@ -400,6 +401,26 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return () => window.removeEventListener('keydown', keydown);
   }, []);
 
+  // Synchronize playback info with macOS menu bar tray item
+  useEffect(() => {
+    if (window.electronAPI?.setPlaybackInfo) {
+      window.electronAPI.setPlaybackInfo({
+        title: currentTitle === 'NOTHING PLAYING' ? '' : currentTitle,
+        artist: currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist,
+        isPlaying,
+      });
+    }
+  }, [currentTitle, currentArtist, isPlaying]);
+
+  // Handle media actions triggered from macOS menu bar tray context menu
+  useEffect(() => {
+    return window.electronAPI?.onPlaybackAction?.((action) => {
+      if (action === 'toggle') handleTogglePlay();
+      else if (action === 'next') handleNext();
+      else if (action === 'previous') handlePrev();
+    });
+  }, [handleTogglePlay, handleNext, handlePrev]);
+
   // Calculate progress percent
   const progressPercent = durationMs > 0 ? Math.max(0, Math.min(100, (progressMs / durationMs) * 100)) : 0;
 
@@ -427,6 +448,42 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       </div>
     );
   };
+
+  if (layoutMode === 'capsule') {
+    return (
+      <div
+        className="w-full h-full relative select-none flex items-center justify-center overflow-hidden bg-transparent"
+        style={{ fontFamily: '"Silkscreen", "Press Start 2P", monospace' }}
+      >
+        <RetroCapsuleWidget
+          layoutMode={layoutMode}
+          onLayoutModeChange={onLayoutModeChange}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          onNext={handleNext}
+          onPrevious={handlePrev}
+          onOpenSettings={(opener) => onOpenSettingsModal(opener as any)}
+          progressMs={progressMs}
+          durationMs={durationMs}
+          seekTo={seekTo}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          currentTitle={currentTitle}
+          currentArtist={currentArtist}
+          currentAlbum={currentAlbum}
+          albumArtUrl={albumArtUrl}
+          currentSpotifyUrl={currentSpotifyUrl}
+          isSpotifyConnected={isSpotifyConnected}
+          onOpenSpotifyModal={onOpenSpotifyModal}
+          onCloseWindow={handleCloseWindow}
+          onMinimizeWindow={handleMinimizeWindow}
+          theme={theme}
+          reducedMotion={reducedMotion}
+          scale={scale}
+        />
+      </div>
+    );
+  }
 
   if (layoutMode === 'ipod') {
     return (
@@ -568,18 +625,32 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           <div className="flex items-center gap-1.5 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
             {/* Layout Toggle Button (shown only in Classic mode) */}
             {layoutMode !== 'card' && (
-              <button
-                type="button"
-                onClick={() => {
-                  playClickSound();
-                  onLayoutModeChange?.('card');
-                }}
-                title="Switch to Music Card Layout"
-                className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#9df0cf] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
-              >
-                <span>▯</span>
-                <span>CARD</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    onLayoutModeChange?.('card');
+                  }}
+                  title="Switch to Music Card Layout"
+                  className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#9df0cf] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
+                >
+                  <span>▯</span>
+                  <span>CARD</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    playClickSound();
+                    onLayoutModeChange?.('capsule');
+                  }}
+                  title="Switch to Menu Bar Capsule Widget (MacBook Menu Bar)"
+                  className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#fec5db] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
+                >
+                  <span>💊</span>
+                  <span>WIDGET</span>
+                </button>
+              </>
             )}
 
             {/* Vercel Web Link Button */}
