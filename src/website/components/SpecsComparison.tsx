@@ -1,8 +1,8 @@
 import React from 'react';
 import { Apple, Monitor, ShieldCheck, Check, Terminal, FileCode, HardDrive, Cpu } from 'lucide-react';
-import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
-import { playClickSound } from '../../services/soundEffects';
-import { ScrollReveal } from '../../hooks/useScrollAnimation';
+import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
+import { playClickSound } from '../../shared/services/soundEffects';
+import { ScrollReveal } from '../hooks/useScrollAnimation';
 
 export const SpecsComparison: React.FC = () => {
   return (

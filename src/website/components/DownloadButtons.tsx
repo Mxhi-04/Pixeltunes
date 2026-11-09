@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Apple, Monitor, Download, ChevronDown, Zap, Check } from 'lucide-react';
-import { useOperatingSystem } from '../../hooks/useOperatingSystem';
-import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
-import { playClickSound } from '../../services/soundEffects';
+import { useOperatingSystem } from '../hooks/useOperatingSystem';
+import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface DownloadButtonsProps {
   className?: string;

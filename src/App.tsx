@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import PlayerApp from './PlayerApp';
-import { LandingPage } from './components/landing/LandingPage';
+import PlayerApp from './app/PlayerApp';
+import { LandingPage } from './website/LandingPage';
 
 export default function App() {
   const [view, setView] = useState<'landing' | 'player'>(() => {

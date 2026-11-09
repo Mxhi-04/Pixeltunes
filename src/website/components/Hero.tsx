@@ -1,7 +1,7 @@
 import React from 'react';
 import { Sparkles, Radio, ShieldCheck, Zap, Disc3, Music2 } from 'lucide-react';
 import { DownloadButtons } from './DownloadButtons';
-import { useScrollParallax } from '../../hooks/useScrollAnimation';
+import { useScrollParallax } from '../hooks/useScrollAnimation';
 
 interface HeroProps {
   onOpenPlayer: () => void;

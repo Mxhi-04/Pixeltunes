@@ -1,8 +1,8 @@
 import React from 'react';
 import { DownloadButtons } from './DownloadButtons';
-import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
+import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
 import { Github, Heart, Sparkles, ArrowUp, Disc } from 'lucide-react';
-import { playClickSound } from '../../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface FooterProps {
   onOpenPlayer: () => void;

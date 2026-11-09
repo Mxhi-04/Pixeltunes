@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Apple, Monitor, Download, Github, ExternalLink, Sparkles, Music } from 'lucide-react';
-import { useOperatingSystem } from '../../hooks/useOperatingSystem';
-import { usePageScrollProgress } from '../../hooks/useScrollAnimation';
-import { DOWNLOAD_LINKS } from '../../utils/downloadLinks';
-import { playClickSound } from '../../services/soundEffects';
+import { useOperatingSystem } from '../hooks/useOperatingSystem';
+import { usePageScrollProgress } from '../hooks/useScrollAnimation';
+import { DOWNLOAD_LINKS } from '../utils/downloadLinks';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface NavbarProps {
   onOpenPlayer: () => void;

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { lofiEngine, BUILTIN_TRACKS } from '../../services/lofiAudio';
+import { lofiEngine, BUILTIN_TRACKS } from '../../shared/services/lofiAudio';
 import { THEMES, RetroTheme } from '../../types/theme';
 import { Play, Pause, SkipForward, SkipBack, Volume2, Sparkles, Tv, Palette, ExternalLink } from 'lucide-react';
-import { playClickSound } from '../../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 const SHOWCASE_COVERS = [
   { name: 'Chrono Campfire', file: '/covers/18_chrono_campfire.gif', track: 'FLY ME TO THE MOON' },

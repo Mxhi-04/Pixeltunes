@@ -1,6 +1,6 @@
 import React from 'react';
 import { KeyRound, Radio, Palette, Tv, ShieldCheck, Cpu, Sliders, Music, Zap, Layers } from 'lucide-react';
-import { ScrollReveal } from '../../hooks/useScrollAnimation';
+import { ScrollReveal } from '../hooks/useScrollAnimation';
 
 interface FeatureCard {
   tag: string;

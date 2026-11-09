@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { THEMES, RetroTheme } from '../../types/theme';
 import { Palette, Check, Sparkles } from 'lucide-react';
-import { playClickSound } from '../../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 export const ThemeMatrix: React.FC = () => {
   const [selectedThemeKey, setSelectedThemeKey] = useState<string>('vaporwave');

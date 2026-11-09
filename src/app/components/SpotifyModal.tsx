@@ -11,9 +11,9 @@ import {
   addTrackToQueue,
   playPlaylist,
 } from '../services/spotify';
-import { SpotifyDevice } from '../types/spotify';
+import { SpotifyDevice } from '../../types/spotify';
 import { parseSpotifyLink } from '../services/spotifyLinks';
-import { playClickSound } from '../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface SpotifyModalProps {
   isOpen: boolean;

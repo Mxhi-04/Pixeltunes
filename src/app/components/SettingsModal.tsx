@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { THEMES, RetroTheme } from '../types/theme';
-import { PLAYER_SCALES, SCALES, PlayerScale } from '../types/scale';
-import { playClickSound, setSoundEffectsEnabled } from '../services/soundEffects';
+import { THEMES, RetroTheme } from '../../types/theme';
+import { PLAYER_SCALES, SCALES, PlayerScale } from '../../types/scale';
+import { playClickSound, setSoundEffectsEnabled } from '../../shared/services/soundEffects';
 import {
   isAutoLaunchEnabled,
   setAutoLaunchPermission,

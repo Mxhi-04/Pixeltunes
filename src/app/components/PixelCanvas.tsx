@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useMemo } from 'react';
-import { getPixelCoverForTrack, PixelCover } from '../types/covers';
+import { getPixelCoverForTrack, PixelCover } from '../../types/covers';
 
 interface PixelCanvasProps {
   isPlaying: boolean;

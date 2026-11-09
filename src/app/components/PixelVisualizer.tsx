@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { lofiEngine } from '../services/lofiAudio';
+import { lofiEngine } from '../../shared/services/lofiAudio';
 
 interface PixelVisualizerProps {
   isPlaying: boolean;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { playClickSound } from '../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 import {
   setAutoLaunchPermission,
   markAutoLaunchPrompted,

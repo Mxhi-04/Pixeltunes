@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ChevronDown, HelpCircle } from 'lucide-react';
-import { playClickSound } from '../../services/soundEffects';
-import { ScrollReveal } from '../../hooks/useScrollAnimation';
+import { playClickSound } from '../../shared/services/soundEffects';
+import { ScrollReveal } from '../hooks/useScrollAnimation';
 
 interface FaqItem {
   q: string;

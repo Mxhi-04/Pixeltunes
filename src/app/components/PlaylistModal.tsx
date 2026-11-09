@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { BUILTIN_TRACKS } from '../services/lofiAudio';
+import { BUILTIN_TRACKS } from '../../shared/services/lofiAudio';
 import { searchTracks, getQueue, playTrack } from '../services/spotify';
-import { playClickSound } from '../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface PlaylistModalProps {
   isOpen: boolean;

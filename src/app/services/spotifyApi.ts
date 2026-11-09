@@ -1,5 +1,5 @@
 import { getAccessToken, refresh } from './spotifyAuth';
-import { SpotifyPlaybackState, SpotifyDevice, SpotifyPlaylist, SpotifyTrack } from '../types/spotify';
+import { SpotifyPlaybackState, SpotifyDevice, SpotifyPlaylist, SpotifyTrack } from '../../types/spotify';
 import {
   isAutoLaunchEnabled,
   launchSpotifyInBackground,

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { login as authLogin } from '../services/spotify';
-import { playClickSound } from '../services/soundEffects';
+import { playClickSound } from '../../shared/services/soundEffects';
 
 interface QuickConnectModalProps {
   isOpen: boolean;

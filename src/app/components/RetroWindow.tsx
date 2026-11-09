@@ -6,9 +6,9 @@ import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
 import { PixelMenuButton } from './PixelMenuButton';
 import { getSpotifyItemUrl } from '../services/spotifyLinks';
-import { RetroTheme } from '../types/theme';
-import { PlayerScale } from '../types/scale';
-import { SpotifyPlaybackState } from '../types/spotify';
+import { RetroTheme } from '../../types/theme';
+import { PlayerScale } from '../../types/scale';
+import { SpotifyPlaybackState } from '../../types/spotify';
 import {
   playSpotify,
   pauseSpotify,
@@ -21,14 +21,14 @@ import {
   getQueue as getQueueSpotify,
   getLikedSongs as getLikedSongsSpotify,
 } from '../services/spotify';
-import { lofiEngine, BuiltinTrack } from '../services/lofiAudio';
+import { lofiEngine, BuiltinTrack } from '../../shared/services/lofiAudio';
 import {
   playClickSound,
   playPlaySound,
   playPauseSound,
   playSkipSound,
   playBlipSound,
-} from '../services/soundEffects';
+} from '../../shared/services/soundEffects';
 
 interface RetroWindowProps {
   theme: RetroTheme;

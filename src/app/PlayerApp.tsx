@@ -6,9 +6,9 @@ import { SettingsModal } from './components/SettingsModal';
 import { QuickConnectModal } from './components/QuickConnectModal';
 import { AutoLaunchPermissionModal } from './components/AutoLaunchPermissionModal';
 import { PlayerDialog } from './components/PlayerDialog';
-import { THEMES } from './types/theme';
-import { PLAYER_SCALES, SCALES, PlayerScale } from './types/scale';
-import { SpotifyPlaybackState } from './types/spotify';
+import { THEMES } from '../types/theme';
+import { PLAYER_SCALES, SCALES, PlayerScale } from '../types/scale';
+import { SpotifyPlaybackState } from '../types/spotify';
 import {
   getPlaybackState,
   getStoredUserName,
@@ -23,7 +23,7 @@ import {
   launchSpotifyInBackground,
   markAutoLaunchPrompted,
 } from './services/spotifyAutoLaunch';
-import { isSoundEffectsEnabled, playClickSound } from './services/soundEffects';
+import { isSoundEffectsEnabled, playClickSound } from '../shared/services/soundEffects';
 
 const BASE_WIDTH = 720;
 const BASE_HEIGHT = 410;

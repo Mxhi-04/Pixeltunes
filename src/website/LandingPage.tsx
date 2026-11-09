@@ -1,14 +1,14 @@
 import React from 'react';
-import { Navbar } from './Navbar';
-import { Hero } from './Hero';
-import { CinematicScroll } from './CinematicScroll';
-import { LivePlayerShowcase } from './LivePlayerShowcase';
-import { FeaturesGrid } from './FeaturesGrid';
-import { ThemeMatrix } from './ThemeMatrix';
-import { PixelArtGallery } from './PixelArtGallery';
-import { SpecsComparison } from './SpecsComparison';
-import { FaqSection } from './FaqSection';
-import { Footer } from './Footer';
+import { Navbar } from './components/Navbar';
+import { Hero } from './components/Hero';
+import { CinematicScroll } from './components/CinematicScroll';
+import { LivePlayerShowcase } from './components/LivePlayerShowcase';
+import { FeaturesGrid } from './components/FeaturesGrid';
+import { ThemeMatrix } from './components/ThemeMatrix';
+import { PixelArtGallery } from './components/PixelArtGallery';
+import { SpecsComparison } from './components/SpecsComparison';
+import { FaqSection } from './components/FaqSection';
+import { Footer } from './components/Footer';
 
 interface LandingPageProps {
   onOpenPlayer: () => void;

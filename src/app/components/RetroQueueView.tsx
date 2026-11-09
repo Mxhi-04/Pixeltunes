@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react';
 import { PixelSaturnIcon } from './PixelSaturnIcon';
 import { getLikedSongs, getQueue, getUserPlaylists, playPlaylist, playTrack } from '../services/spotify';
-import { BUILTIN_TRACKS } from '../services/lofiAudio';
-import { playClickSound } from '../services/soundEffects';
+import { BUILTIN_TRACKS } from '../../shared/services/lofiAudio';
+import { playClickSound } from '../../shared/services/soundEffects';
 import { getSpotifyItemUrl } from '../services/spotifyLinks';
-import type { SpotifyPlaybackState, SpotifyPlaylist, SpotifyTrack } from '../types/spotify';
+import type { SpotifyPlaybackState, SpotifyPlaylist, SpotifyTrack } from '../../types/spotify';
 
 interface RetroQueueViewProps {
   isSpotifyConnected: boolean;
