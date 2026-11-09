@@ -4,5 +4,5 @@ export type PlayerScale = keyof typeof playerSizes;
 export const SCALES = playerSizes;
 export const PLAYER_SCALES = Object.keys(SCALES) as PlayerScale[];
 
-export type PlayerLayoutMode = 'classic' | 'card';
-export const PLAYER_LAYOUT_MODES: PlayerLayoutMode[] = ['classic', 'card'];
+export type PlayerLayoutMode = 'classic' | 'card' | 'ipod';
+export const PLAYER_LAYOUT_MODES: PlayerLayoutMode[] = ['classic', 'card', 'ipod'];

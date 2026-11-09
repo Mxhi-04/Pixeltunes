@@ -220,7 +220,10 @@ export function App() {
 
   const CARD_WIDTH = 320;
   const CARD_HEIGHT = 460;
+  const IPOD_WIDTH = 270;
+  const IPOD_HEIGHT = 475;
   const isCard = layoutMode === 'card';
+  const isIpod = layoutMode === 'ipod';
 
   const getCardDimensions = (s: PlayerScale) => {
     if (s === 'mini' || s === 'tiny') return { width: 256, height: 368 };
@@ -228,17 +231,31 @@ export function App() {
     return { width: CARD_WIDTH, height: CARD_HEIGHT };
   };
 
+  const getIpodDimensions = (s: PlayerScale) => {
+    if (s === 'mini' || s === 'tiny') return { width: 230, height: 405 };
+    if (s === 'large' || s === 'xl') return { width: 310, height: 545 };
+    return { width: IPOD_WIDTH, height: IPOD_HEIGHT };
+  };
+
   useEffect(() => {
-    if (isElectron && window.electronAPI?.setSize && layoutMode === 'card') {
-      const { width, height } = getCardDimensions(scale);
-      window.electronAPI.setSize(width, height);
+    if (isElectron && window.electronAPI?.setSize) {
+      if (layoutMode === 'ipod') {
+        const { width, height } = getIpodDimensions(scale);
+        window.electronAPI.setSize(width, height);
+      } else if (layoutMode === 'card') {
+        const { width, height } = getCardDimensions(scale);
+        window.electronAPI.setSize(width, height);
+      }
     }
   }, []);
 
   const handleLayoutModeChange = (mode: PlayerLayoutMode) => {
     setLayoutMode(mode);
     if (isElectron && window.electronAPI?.setSize) {
-      if (mode === 'card') {
+      if (mode === 'ipod') {
+        const { width, height } = getIpodDimensions(scale);
+        window.electronAPI.setSize(width, height);
+      } else if (mode === 'card') {
         const { width, height } = getCardDimensions(scale);
         window.electronAPI.setSize(width, height);
       } else {
@@ -250,7 +267,10 @@ export function App() {
   const handleScaleChange = (nextScale: PlayerScale) => {
     setScale(nextScale);
     if (isElectron && window.electronAPI?.setSize) {
-      if (layoutMode === 'card') {
+      if (layoutMode === 'ipod') {
+        const { width, height } = getIpodDimensions(nextScale);
+        window.electronAPI.setSize(width, height);
+      } else if (layoutMode === 'card') {
         const { width, height } = getCardDimensions(nextScale);
         window.electronAPI.setSize(width, height);
       } else {
@@ -260,23 +280,23 @@ export function App() {
   };
 
   useEffect(() => {
-    if (layoutMode !== 'card') {
+    if (layoutMode === 'classic') {
       window.electronAPI?.setScale(scale);
     }
   }, [scale, layoutMode]);
   useEffect(() => window.electronAPI?.onScaleChanged((nextScale) => {
-    if (layoutMode !== 'card') {
+    if (layoutMode === 'classic') {
       setScale(nextScale);
     }
   }), [setScale, layoutMode]);
 
-  const portrait = !isElectron && !isCard && dimensions.width <= 560 && dimensions.height > dimensions.width;
-  const frameWidth = isCard ? CARD_WIDTH : portrait ? 420 : BASE_WIDTH;
-  const frameHeight = isCard ? CARD_HEIGHT : portrait ? 630 : BASE_HEIGHT;
+  const portrait = !isElectron && !isCard && !isIpod && dimensions.width <= 560 && dimensions.height > dimensions.width;
+  const frameWidth = isIpod ? IPOD_WIDTH : isCard ? CARD_WIDTH : portrait ? 420 : BASE_WIDTH;
+  const frameHeight = isIpod ? IPOD_HEIGHT : isCard ? CARD_HEIGHT : portrait ? 630 : BASE_HEIGHT;
   const fit = Math.min(dimensions.width / frameWidth, dimensions.height / frameHeight);
   const zoomScale = isElectron
     ? fit
-    : isCard
+    : (isCard || isIpod)
     ? (scale === 'mini' || scale === 'tiny' ? Math.min(0.85, fit * 0.78) : scale === 'large' || scale === 'xl' ? Math.min(1.3, fit * 1.15) : Math.min(1.15, fit * 0.95))
     : portrait
     ? fit * { tiny: 0.72, mini: 0.82, standard: 0.92, large: 0.97, xl: 1 }[scale]

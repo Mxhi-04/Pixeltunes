@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PixelCanvas } from './PixelCanvas';
 import { RetroQueueView } from './RetroQueueView';
+import { RetroIpodView } from './RetroIpodView';
 import { PixelVisualizer } from './PixelVisualizer';
 import { PixelSpeakerIcon } from './PixelSpeakerIcon';
 import { PixelShuffleIcon, PixelRepeatIcon } from './PixelControlIcons';
@@ -426,6 +427,57 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
       </div>
     );
   };
+
+  if (layoutMode === 'ipod') {
+    return (
+      <div
+        className="w-full h-full relative select-none flex items-center justify-center overflow-hidden bg-transparent"
+        style={{ fontFamily: '"Press Start 2P", monospace' }}
+      >
+        {crtEnabled && <div aria-hidden="true" className="absolute inset-0 crt-overlay z-40 pointer-events-none" />}
+        <RetroIpodView
+          layoutMode={layoutMode}
+          onLayoutModeChange={onLayoutModeChange}
+          isPlaying={isPlaying}
+          onTogglePlay={handleTogglePlay}
+          onNext={handleNext}
+          onPrevious={handlePrev}
+          onOpenSettings={() => onOpenSettingsModal(null as any)}
+          progressMs={progressMs}
+          durationMs={durationMs}
+          seekTo={seekTo}
+          volume={volume}
+          onVolumeChange={handleVolumeChange}
+          currentTitle={currentTitle}
+          currentArtist={currentArtist}
+          currentAlbum={currentAlbum}
+          albumArtUrl={albumArtUrl}
+          currentSpotifyUrl={currentSpotifyUrl}
+          isSpotifyConnected={isSpotifyConnected}
+          onOpenSpotifyModal={onOpenSpotifyModal}
+          shuffleState={shuffleState}
+          onToggleShuffle={handleToggleShuffle}
+          repeatState={repeatState}
+          onCycleRepeat={handleCycleRepeat}
+          onCloseWindow={handleCloseWindow}
+          onMinimizeWindow={handleMinimizeWindow}
+          artMode={artMode}
+          pixelResolution={pixelResolution}
+          theme={theme}
+          reducedMotion={reducedMotion}
+          showQueue={showQueue}
+          onToggleQueue={() => setShowQueue(!showQueue)}
+          activeSpotifyItem={activeSpotifyItem}
+          localTrack={localTrack}
+          onTrackPlayed={handleTrackPlayed}
+          onBuiltinSelect={(index) => {
+            setBuiltinStarted(true);
+            lofiEngine.selectTrack(index);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div

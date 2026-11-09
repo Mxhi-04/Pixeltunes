@@ -131,22 +131,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </label>
             </div>
             {/* Layout Style Choice */}
-            <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="grid grid-cols-3 gap-2 mb-2">
               <button
                 type="button"
-                aria-pressed={layoutMode !== 'card'}
+                aria-pressed={layoutMode === 'classic'}
                 onClick={() => {
                   playClickSound();
                   onLayoutModeChange?.('classic');
                 }}
-                className={`p-2 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer font-bold ${
-                  layoutMode !== 'card'
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                  layoutMode === 'classic'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
                 <div>◫ CLASSIC</div>
-                <div className="text-[7.5px] opacity-75 mt-0.5 font-sans">Wide Landscape</div>
+                <div className="text-[7px] opacity-75 mt-0.5 font-sans">Wide Window</div>
               </button>
               <button
                 type="button"
@@ -155,19 +155,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   playClickSound();
                   onLayoutModeChange?.('card');
                 }}
-                className={`p-2 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer font-bold ${
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
                   layoutMode === 'card'
                     ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
                     : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
                 }`}
               >
-                <div>▯ MUSIC CARD</div>
-                <div className="text-[7.5px] opacity-75 mt-0.5 font-sans">Portrait Polaroid</div>
+                <div>▯ CARD</div>
+                <div className="text-[7px] opacity-75 mt-0.5 font-sans">Polaroid Art</div>
+              </button>
+              <button
+                type="button"
+                aria-pressed={layoutMode === 'ipod'}
+                onClick={() => {
+                  playClickSound();
+                  onLayoutModeChange?.('ipod');
+                }}
+                className={`py-2 px-1 text-center border-2 border-[#191244] font-pixel text-[8.5px] transition-all cursor-pointer font-bold flex flex-col items-center justify-center leading-tight ${
+                  layoutMode === 'ipod'
+                    ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm'
+                    : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
+                }`}
+              >
+                <div>📟 IPOD MINI</div>
+                <div className="text-[7px] opacity-75 mt-0.5 font-sans">Click Wheel</div>
               </button>
             </div>
 
             {/* Window Size Scale (for Classic layout only) */}
-            {layoutMode !== 'card' && (
+            {layoutMode === 'classic' && (
               <div>
                 <div className="flex justify-between items-center mb-1 text-[8.5px] opacity-80 font-pixel">
                   <span>WINDOW SIZE:</span>
