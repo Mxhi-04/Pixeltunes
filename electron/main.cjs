@@ -544,17 +544,52 @@ function buildTrayMenu() {
 
 function updateTrayDisplay() {
   if (!tray) return;
-  if (!currentPlaybackInfo.title) {
-    tray.setTitle(' ♪ PixelTunes');
-    tray.setToolTip('PixelTunes');
+  const text = currentPlaybackInfo.title
+    ? `${currentPlaybackInfo.isPlaying ? '▶' : '❚❚'} ${currentPlaybackInfo.artist ? `${currentPlaybackInfo.artist} / ` : ''}${currentPlaybackInfo.title}`
+    : 'PixelTunes: No Track Playing';
+  tray.setToolTip(text);
+}
+
+function togglePopover() {
+  if (!mainWindow) createWindow();
+
+  if (mainWindow.isVisible()) {
+    mainWindow.hide();
   } else {
-    const icon = currentPlaybackInfo.isPlaying ? '▶' : '❚❚';
-    const text = currentPlaybackInfo.artist
-      ? `${currentPlaybackInfo.title} · ${currentPlaybackInfo.artist}`
-      : currentPlaybackInfo.title;
-    const shortText = text.length > 25 ? text.slice(0, 24) + '…' : text;
-    tray.setTitle(` ${icon} ${shortText}`);
-    tray.setToolTip(`PixelTunes: ${text}`);
+    playerLayoutMode = 'capsule';
+    mainWindow.webContents.send('window:layout-changed', 'capsule');
+
+    const POPOVER_WIDTH = 390;
+    const POPOVER_HEIGHT = 100;
+
+    const anchor = tray?.getBounds();
+    if (anchor && anchor.width > 0 && anchor.x > 0) {
+      const display = screen.getDisplayMatching(anchor);
+      const { bounds: screenBounds } = display;
+
+      const x = Math.round(anchor.x + anchor.width / 2 - POPOVER_WIDTH / 2);
+      const y = Math.max(screenBounds.y, anchor.y + anchor.height) + 4;
+
+      const clampedX = Math.max(screenBounds.x + 8, Math.min(x, screenBounds.x + screenBounds.width - POPOVER_WIDTH - 8));
+      const clampedY = Math.max(screenBounds.y, Math.min(y, screenBounds.y + screenBounds.height - POPOVER_HEIGHT - 8));
+
+      mainWindow.setBounds({
+        x: clampedX,
+        y: clampedY,
+        width: POPOVER_WIDTH,
+        height: POPOVER_HEIGHT,
+      });
+    } else {
+      resizePlayer(POPOVER_WIDTH, POPOVER_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
+    }
+
+    if (process.platform === 'darwin') {
+      mainWindow.setAlwaysOnTop(true, 'status', 1);
+      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+    }
+
+    mainWindow.show();
+    mainWindow.focus();
   }
 }
 
@@ -571,20 +606,11 @@ function createMenuBar() {
   }
 
   tray = icon && !icon.isEmpty() ? new Tray(icon) : new Tray(iconPath);
-  tray.setTitle(' ♪ PixelTunes');
   tray.setToolTip('PixelTunes');
   tray.setIgnoreDoubleClickEvents(true);
 
   tray.on('click', () => {
-    if (mainWindow?.isMinimized()) {
-      mainWindow.restore();
-      mainWindow.show();
-      mainWindow.focus();
-    } else if (mainWindow?.isVisible()) {
-      mainWindow.hide();
-    } else {
-      showPlayer(true);
-    }
+    togglePopover();
   });
 
   tray.on('right-click', () => {

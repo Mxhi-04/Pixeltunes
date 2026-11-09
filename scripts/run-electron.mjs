@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { ELECTRON_RUN_AS_NODE, ...env } = process.env;
+const env = { ...process.env };
+delete env.ELECTRON_RUN_AS_NODE;
 const child = spawn(require('electron'), ['.', ...process.argv.slice(2)], { env, stdio: 'inherit' });
 
 child.on('error', (error) => {
