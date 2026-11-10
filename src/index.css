@@ -32,15 +32,14 @@ button, button *, a, a *, input, select, [role="button"], [role="button"] *, .cu
 }
 
 html {
-  overflow-x: hidden;
-  overflow-y: hidden;
+  overflow-x: clip;
   scroll-behavior: smooth;
 }
 
 @layer base {
   body {
     font-family: 'Silkscreen', 'Press Start 2P', monospace;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 }
 

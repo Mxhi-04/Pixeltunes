@@ -10,6 +10,24 @@ const isMac = process.platform === 'darwin';
 const appIconPath = fs.existsSync(path.join(__dirname, 'assets', 'icon.png'))
   ? path.join(__dirname, 'assets', 'icon.png')
   : path.join(__dirname, '../assets/pixeltunes-icon.png');
+const appIconIcnsPath = path.join(__dirname, 'assets', 'icon.icns');
+
+function applyDockIcon() {
+  if (!isMac || !app.dock) return;
+  try {
+    const iconSource = fs.existsSync(appIconIcnsPath) ? appIconIcnsPath : appIconPath;
+    if (fs.existsSync(iconSource)) {
+      const img = nativeImage.createFromPath(iconSource);
+      if (!img.isEmpty()) {
+        app.dock.setIcon(img);
+      } else if (fs.existsSync(appIconPath)) {
+        app.dock.setIcon(appIconPath);
+      }
+    }
+  } catch (e) {
+    console.warn('[PixelTunes] Could not set dock icon:', e.message);
+  }
+}
 let mainWindow = null;
 let popoverWindow = null;
 let tray = null;
@@ -342,6 +360,7 @@ function createWindow() {
   });
 
   if (process.platform === 'darwin') {
+    applyDockIcon();
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     if (isAlwaysOnTop) {
       mainWindow.setAlwaysOnTop(true, 'floating', 1);
@@ -442,6 +461,7 @@ function showPlayer(fromTray = false) {
   }
 
   if (process.platform === 'darwin') {
+    applyDockIcon();
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
     if (isAlwaysOnTop) {
       mainWindow.setAlwaysOnTop(true, 'floating', 1);
@@ -553,6 +573,7 @@ function buildTrayMenu() {
         if (process.platform === 'darwin') {
           if (showInDock) {
             app.setActivationPolicy('regular');
+            applyDockIcon();
             app.dock?.show();
           } else {
             app.setActivationPolicy('accessory');
@@ -601,6 +622,7 @@ function createPopoverWindow() {
     skipTaskbar: true,
     backgroundColor: '#00000000',
     title: 'PixelTunes Menu Bar Player',
+    icon: appIconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -964,15 +986,7 @@ if (!app.requestSingleInstanceLock()) {
       if (/^[a-f0-9]{32}$/i.test(configured)) lastClientId = configured;
     } catch {}
     if (isMac) {
-      if (app.dock) {
-        try {
-          if (fs.existsSync(appIconPath)) {
-            app.dock.setIcon(appIconPath);
-          }
-        } catch (e) {
-          console.warn('[PixelTunes] Could not set dock icon:', e.message);
-        }
-      }
+      applyDockIcon();
       createMenuBar();
       // Start in accessory activation policy: enables floating above full-screen apps
       // and eliminates unwanted space-switching when toggled from the menu bar

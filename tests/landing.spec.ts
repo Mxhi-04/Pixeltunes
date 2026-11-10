@@ -43,4 +43,12 @@ test('landing page renders SOTA hero, dynamic OS-aware download buttons, and int
   await expect(page.getByRole('link', { name: 'PREVIEW' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'FEATURES' })).toBeVisible();
   await expect(page.getByRole('link', { name: '7 THEMES' })).toBeVisible();
+
+  // Verify page is scrollable via wheel and keyboard
+  const currentScrollY = await page.evaluate(() => window.scrollY);
+  expect(currentScrollY).toBeGreaterThan(0);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.mouse.wheel(0, 600);
+  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(200);
 });
