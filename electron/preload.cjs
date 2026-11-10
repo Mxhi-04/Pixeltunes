@@ -30,11 +30,20 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('window:layout-changed', handler);
   },
   setPlaybackInfo: (info) => ipcRenderer.send('tray:set-playback-info', info),
+  broadcastPlaybackState: (state) => ipcRenderer.send('playback:broadcast-state', state),
+  onPlaybackStateSync: (callback) => {
+    const handler = (_event, state) => callback(state);
+    ipcRenderer.on('playback:state-sync', handler);
+    return () => ipcRenderer.removeListener('playback:state-sync', handler);
+  },
+  sendPlaybackAction: (action, payload) => ipcRenderer.send('playback:action-send', { action, payload }),
   onPlaybackAction: (callback) => {
-    const handler = (_event, action) => callback(action);
+    const handler = (_event, action, payload) => callback(action, payload);
     ipcRenderer.on('playback:action', handler);
     return () => ipcRenderer.removeListener('playback:action', handler);
   },
+  setPopoverHeight: (height) => ipcRenderer.send('popover:set-height', height),
+  hidePopover: () => ipcRenderer.send('popover:hide'),
   // Spotify PKCE Auth (Keychain Secured - No Client Secret)
   authLogin: (clientId, presentation) => ipcRenderer.invoke('auth:login', clientId, presentation),
   authRefresh: () => ipcRenderer.invoke('auth:refresh'),

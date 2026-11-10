@@ -401,25 +401,50 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return () => window.removeEventListener('keydown', keydown);
   }, []);
 
-  // Synchronize playback info with macOS menu bar tray item
+  // Synchronize playback info with macOS menu bar tray item & MenuBar popover
   useEffect(() => {
+    const cleanTitle = currentTitle === 'NOTHING PLAYING' ? '' : currentTitle;
+    const cleanArtist = currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist;
+
     if (window.electronAPI?.setPlaybackInfo) {
       window.electronAPI.setPlaybackInfo({
-        title: currentTitle === 'NOTHING PLAYING' ? '' : currentTitle,
-        artist: currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist,
+        title: cleanTitle,
+        artist: cleanArtist,
         isPlaying,
       });
     }
-  }, [currentTitle, currentArtist, isPlaying]);
 
-  // Handle media actions triggered from macOS menu bar tray context menu
+    if (window.electronAPI?.broadcastPlaybackState) {
+      window.electronAPI.broadcastPlaybackState({
+        title: cleanTitle || 'PixelTunes',
+        artist: cleanArtist || 'Ready to Play',
+        album: currentAlbum || '',
+        artworkUrl: albumArtUrl || '',
+        durationMs,
+        progressMs,
+        isPlaying,
+        volumePercent: Math.round(isSpotifyConnected ? volume : volume * 100),
+        shuffleState,
+        repeatState,
+        isSpotifyConnected,
+      });
+    }
+  }, [currentTitle, currentArtist, currentAlbum, albumArtUrl, durationMs, progressMs, isPlaying, volume, shuffleState, repeatState, isSpotifyConnected]);
+
+  // Handle media actions triggered from macOS menu bar popover or tray context menu
   useEffect(() => {
-    return window.electronAPI?.onPlaybackAction?.((action) => {
+    return window.electronAPI?.onPlaybackAction?.((action, payload) => {
       if (action === 'toggle') handleTogglePlay();
       else if (action === 'next') handleNext();
       else if (action === 'previous') handlePrev();
+      else if (action === 'seek' && typeof payload?.positionMs === 'number') void seekTo(payload.positionMs);
+      else if (action === 'shuffle') handleToggleShuffle();
+      else if (action === 'repeat') handleCycleRepeat();
+      else if (action === 'volume' && typeof payload?.volumePercent === 'number') {
+        void handleVolumeChange(payload.volumePercent);
+      }
     });
-  }, [handleTogglePlay, handleNext, handlePrev]);
+  }, [handleTogglePlay, handleNext, handlePrev, seekTo, handleToggleShuffle, handleCycleRepeat, handleVolumeChange]);
 
   // Calculate progress percent
   const progressPercent = durationMs > 0 ? Math.max(0, Math.min(100, (progressMs / durationMs) * 100)) : 0;
@@ -623,36 +648,6 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
           {/* Interactive Action Buttons - NO DRAG */}
           <div className="flex items-center gap-1.5 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
-            {/* Layout Toggle Button (shown only in Classic mode) */}
-            {layoutMode !== 'card' && (
-              <>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playClickSound();
-                    onLayoutModeChange?.('card');
-                  }}
-                  title="Switch to Music Card Layout"
-                  className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#9df0cf] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
-                >
-                  <span>▯</span>
-                  <span>CARD</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    playClickSound();
-                    onLayoutModeChange?.('capsule');
-                  }}
-                  title="Switch to Menu Bar Capsule Widget (MacBook Menu Bar)"
-                  className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[#191244] font-pixel text-[7px] font-bold hover:bg-[#fec5db] active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 leading-none shadow-pixel-xs"
-                >
-                  <span>💊</span>
-                  <span>WIDGET</span>
-                </button>
-              </>
-            )}
-
             {/* Vercel Web Link Button */}
             <a
               href="https://pixeltunes.vercel.app"

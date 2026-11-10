@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import PlayerApp from './app/PlayerApp';
+import { MenuBarPlayer } from './app/components/MenuBarPlayer';
 import { LandingPage } from './website/LandingPage';
 
 export default function App() {
+  const isMenuBar = typeof window !== 'undefined' && (
+    new URLSearchParams(window.location.search).get('view') === 'menubar' ||
+    window.location.hash.includes('menubar')
+  );
+
+  if (isMenuBar) {
+    return <MenuBarPlayer />;
+  }
   const [view, setView] = useState<'landing' | 'player'>(() => {
     // If running in Electron desktop app, always render the player:
     if (typeof window !== 'undefined' && window.electronAPI) {
