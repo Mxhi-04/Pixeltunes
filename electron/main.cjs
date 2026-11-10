@@ -29,7 +29,6 @@ function applyDockIcon() {
   }
 }
 let mainWindow = null;
-let popoverWindow = null;
 let tray = null;
 let isQuitting = false;
 let isAlwaysOnTop = true;
@@ -39,7 +38,6 @@ let currentAspectRatio = 720 / 410;
 let persistentAuthServer = null;
 let isTogglingPopover = false;
 let showInDock = false;
-let currentPlaybackState = null;
 
 // Spotify PKCE Public Client (No Client Secret Required Anywhere!)
 const SPOTIFY_CLIENT_ID = process.env.VITE_SPOTIFY_CLIENT_ID ||
@@ -425,6 +423,13 @@ function createWindow() {
     }
   });
 
+  mainWindow.on('blur', () => {
+    // If the window is in capsule/popover mode, auto-dismiss when user clicks back into Chrome/active app
+    if (playerLayoutMode === 'capsule' && !isTogglingPopover && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.hide();
+    }
+  });
+
   mainWindow.on('restore', () => {
     if (process.platform === 'darwin' && isAlwaysOnTop) {
       mainWindow.setAlwaysOnTop(true, 'floating', 1);
@@ -443,22 +448,27 @@ function showPlayer(fromTray = false) {
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
 
-  const anchor = tray?.getBounds();
-  if (fromTray && !mainWindow.isVisible() && anchor?.width > 0) {
-    const { workArea } = screen.getDisplayMatching(anchor);
-    const bounds = mainWindow.getBounds();
-    const fit = Math.min(1, workArea.width / bounds.width, workArea.height / bounds.height);
-    const width = Math.round(bounds.width * fit);
-    const height = Math.round(bounds.height * fit);
-    const x = Math.round(anchor.x + (anchor.width - width) / 2);
-    const y = Math.max(workArea.y, anchor.y + anchor.height) + 6;
-    mainWindow.setBounds({
-      x: Math.max(workArea.x, Math.min(x, workArea.x + workArea.width - width)),
-      y: Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - height)),
-      width,
-      height,
-    });
+  // If in capsule mode, return to classic layout when explicitly showing full player
+  if (playerLayoutMode === 'capsule') {
+    playerLayoutMode = 'classic';
+    mainWindow.webContents.send('window:layout-changed', 'classic');
+    const standardSize = playerSizes[playerScale] || playerSizes.standard;
+    resizePlayer(standardSize.width, standardSize.height);
   }
+
+  // Always spawn/center player at the center of the active display work area
+  const targetDisplay = (screen.getCursorScreenPoint && screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+    || screen.getPrimaryDisplay();
+  const { workArea } = targetDisplay;
+  const bounds = mainWindow.getBounds();
+  const x = Math.round(workArea.x + (workArea.width - bounds.width) / 2);
+  const y = Math.round(workArea.y + (workArea.height - bounds.height) / 2);
+  mainWindow.setBounds({
+    x,
+    y,
+    width: bounds.width,
+    height: bounds.height,
+  });
 
   if (process.platform === 'darwin') {
     applyDockIcon();
@@ -468,7 +478,8 @@ function showPlayer(fromTray = false) {
     }
   }
 
-  mainWindow.showInactive();
+  mainWindow.show();
+  mainWindow.focus();
   mainWindow.moveTop();
 }
 
@@ -533,7 +544,7 @@ function buildTrayMenu() {
           },
         },
         {
-          label: '💊 Menu Bar Capsule',
+          label: 'Menu Bar Capsule',
           type: 'radio',
           checked: playerLayoutMode === 'capsule',
           click: () => {
@@ -603,82 +614,23 @@ function updateTrayDisplay() {
   tray.setToolTip(text);
 }
 
-function createPopoverWindow() {
-  if (popoverWindow && !popoverWindow.isDestroyed()) return popoverWindow;
-
-  const POPOVER_WIDTH = 370;
-  const POPOVER_HEIGHT = 210;
-
-  popoverWindow = new BrowserWindow({
-    width: POPOVER_WIDTH,
-    height: POPOVER_HEIGHT,
-    show: false,
-    frame: false,
-    transparent: true,
-    hasShadow: true,
-    resizable: false,
-    fullscreenable: false,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    backgroundColor: '#00000000',
-    title: 'PixelTunes Menu Bar Player',
-    icon: appIconPath,
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.cjs'),
-      nodeIntegration: false,
-      contextIsolation: true,
-      sandbox: true,
-    },
-  });
-
-  if (process.platform === 'darwin') {
-    popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-    popoverWindow.setAlwaysOnTop(true, 'status', 1);
-  }
-
-  const distHtmlPath = path.join(__dirname, '../dist/index.html');
-  const forceDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
-  const requestedDevUrl = URL.parse(process.env.VITE_DEV_SERVER_URL || '');
-  const devServerUrl = requestedDevUrl?.protocol === 'http:' &&
-    ['localhost', '127.0.0.1', '[::1]'].includes(requestedDevUrl.hostname)
-    ? requestedDevUrl.origin : 'http://127.0.0.1:5173';
-
-  if (forceDev || !fs.existsSync(distHtmlPath)) {
-    popoverWindow.loadURL(`${devServerUrl}?view=menubar`);
-  } else {
-    popoverWindow.loadFile(distHtmlPath, { query: { view: 'menubar' } });
-  }
-
-  popoverWindow.on('blur', () => {
-    if (!isTogglingPopover && popoverWindow && !popoverWindow.isDestroyed()) {
-      popoverWindow.hide();
-    }
-  });
-
-  popoverWindow.on('closed', () => {
-    popoverWindow = null;
-  });
-
-  return popoverWindow;
-}
-
 function togglePopover() {
+  if (!mainWindow) createWindow();
+
   if (isTogglingPopover) return;
   isTogglingPopover = true;
   setTimeout(() => { isTogglingPopover = false; }, 250);
 
-  if (!popoverWindow || popoverWindow.isDestroyed()) {
-    createPopoverWindow();
-  }
-
-  if (popoverWindow.isVisible()) {
-    popoverWindow.hide();
+  if (mainWindow.isVisible() && playerLayoutMode === 'capsule') {
+    mainWindow.hide();
     return;
   }
 
-  const bounds = popoverWindow.getBounds();
-  const POPOVER_WIDTH = 370;
-  const currentHeight = bounds.height || 210;
+  playerLayoutMode = 'capsule';
+  mainWindow.webContents.send('window:layout-changed', 'capsule');
+
+  const POPOVER_WIDTH = 390;
+  const POPOVER_HEIGHT = 100;
 
   const anchor = tray?.getBounds();
   if (anchor && anchor.width > 0 && anchor.x > 0) {
@@ -689,27 +641,25 @@ function togglePopover() {
     const y = Math.max(screenBounds.y, anchor.y + anchor.height) + 4;
 
     const clampedX = Math.max(screenBounds.x + 8, Math.min(x, screenBounds.x + screenBounds.width - POPOVER_WIDTH - 8));
-    const clampedY = Math.max(screenBounds.y, Math.min(y, screenBounds.y + screenBounds.height - currentHeight - 8));
+    const clampedY = Math.max(screenBounds.y, Math.min(y, screenBounds.y + screenBounds.height - POPOVER_HEIGHT - 8));
 
-    popoverWindow.setBounds({
+    mainWindow.setBounds({
       x: clampedX,
       y: clampedY,
       width: POPOVER_WIDTH,
-      height: currentHeight,
+      height: POPOVER_HEIGHT,
     });
+  } else {
+    resizePlayer(POPOVER_WIDTH, POPOVER_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
   }
 
   if (process.platform === 'darwin') {
-    popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-    popoverWindow.setAlwaysOnTop(true, 'status', 1);
+    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    mainWindow.setAlwaysOnTop(true, 'status', 1);
   }
 
-  if (currentPlaybackState) {
-    popoverWindow.webContents.send('playback:state-sync', currentPlaybackState);
-  }
-
-  popoverWindow.showInactive();
-  popoverWindow.moveTop();
+  mainWindow.showInactive();
+  mainWindow.moveTop();
 }
 
 function createMenuBar() {
@@ -737,12 +687,9 @@ function createMenuBar() {
   });
 }
 
-// Accept IPC from either the main player widget or the menu bar popover.
+// Accept IPC only from the main app document.
 function fromApp(event) {
-  return Boolean(
-    (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) ||
-    (popoverWindow && !popoverWindow.isDestroyed() && event.sender === popoverWindow.webContents)
-  );
+  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
 }
 
 function handle(channel, handler) {
@@ -861,54 +808,6 @@ ipcMain.on('tray:set-playback-info', (event, info) => {
   }
 });
 
-ipcMain.on('playback:broadcast-state', (event, state) => {
-  if (!fromApp(event)) return;
-  currentPlaybackState = state;
-  if (state?.title) {
-    currentPlaybackInfo = {
-      title: state.title,
-      artist: state.artist || '',
-      isPlaying: Boolean(state.isPlaying),
-    };
-    updateTrayDisplay();
-  }
-  // Relay to the other window so desktop widget and menu bar stay 100% in sync
-  if (mainWindow && !mainWindow.isDestroyed() && event.sender !== mainWindow.webContents) {
-    mainWindow.webContents.send('playback:state-sync', state);
-  }
-  if (popoverWindow && !popoverWindow.isDestroyed() && event.sender !== popoverWindow.webContents) {
-    popoverWindow.webContents.send('playback:state-sync', state);
-  }
-});
-
-ipcMain.on('playback:action-send', (event, { action, payload }) => {
-  if (!fromApp(event)) return;
-  // Forward action to mainWindow to perform the playback change
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('playback:action', action, payload);
-  }
-});
-
-ipcMain.on('popover:set-height', (event, height) => {
-  if (!fromApp(event)) return;
-  if (popoverWindow && !popoverWindow.isDestroyed() && typeof height === 'number') {
-    const bounds = popoverWindow.getBounds();
-    popoverWindow.setBounds({
-      x: bounds.x,
-      y: bounds.y,
-      width: bounds.width,
-      height: Math.round(height),
-    });
-  }
-});
-
-ipcMain.on('popover:hide', (event) => {
-  if (!fromApp(event)) return;
-  if (popoverWindow && !popoverWindow.isDestroyed()) {
-    popoverWindow.hide();
-  }
-});
-
 handle('window:dock-to-menubar', () => {
   if (!mainWindow) return false;
   const bounds = mainWindow.getBounds();
@@ -973,7 +872,6 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => { isQuitting = true; });
   app.on('will-quit', () => {
     tray?.destroy();
-    popoverWindow?.destroy();
     persistentAuthServer?.close();
   });
   app.on('window-all-closed', () => {

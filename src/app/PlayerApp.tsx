@@ -57,8 +57,12 @@ export function App() {
   const [scale, setScale] = usePreference<PlayerScale>('scale', 'standard', PLAYER_SCALES);
   const [layoutMode, setLayoutMode] = usePreference<PlayerLayoutMode>('layout_mode', 'classic', PLAYER_LAYOUT_MODES);
   const [crt, setCrt] = usePreference('crt', 'on', ['on', 'off']);
-  const motion = 'on';
-  const reducedMotion = false;
+  const [systemReduced, setSystemReduced] = useState(() => (
+    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+      ? window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      : false
+  ));
+  const reducedMotion = systemReduced;
   const [windowTitle] = usePreference<string>('window_title', 'PIXELTUNES');
   const [titleEmojis] = usePreference<string>('title_emojis', '𐙚 ⊹₊⋆☆');
   const [soundEnabled, setSoundEnabled] = useState(isSoundEffectsEnabled);
@@ -213,8 +217,20 @@ export function App() {
   useEffect(() => {
     const resize = () => setDimensions({ width: window.innerWidth, height: window.innerHeight });
     window.addEventListener('resize', resize);
+
+    let preference: MediaQueryList | null = null;
+    let changeMotion: ((event: MediaQueryListEvent) => void) | null = null;
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+      changeMotion = (event: MediaQueryListEvent) => setSystemReduced(event.matches);
+      preference.addEventListener('change', changeMotion);
+    }
+
     return () => {
       window.removeEventListener('resize', resize);
+      if (preference && changeMotion) {
+        preference.removeEventListener('change', changeMotion);
+      }
     };
   }, []);
 

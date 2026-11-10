@@ -21,12 +21,7 @@ export interface ElectronAPI {
   setLayoutMode?: (mode: PlayerLayoutMode) => void;
   onLayoutModeChanged?: (callback: (mode: PlayerLayoutMode) => void) => () => void;
   setPlaybackInfo?: (info: { title: string; artist?: string; isPlaying: boolean }) => void;
-  broadcastPlaybackState?: (state: any) => void;
-  onPlaybackStateSync?: (callback: (state: any) => void) => () => void;
-  sendPlaybackAction?: (action: string, payload?: any) => void;
-  onPlaybackAction?: (callback: (action: string, payload?: any) => void) => () => void;
-  setPopoverHeight?: (height: number) => void;
-  hidePopover?: () => void;
+  onPlaybackAction?: (callback: (action: 'toggle' | 'next' | 'previous') => void) => () => void;
   authLogin?: (clientId?: string, presentation?: { theme: string | null; motion: string | null }) =>
     Promise<{ success: boolean; error?: string }>;
   authRefresh?: () => Promise<{ access_token?: string; expires_in?: number; error?: string }>;

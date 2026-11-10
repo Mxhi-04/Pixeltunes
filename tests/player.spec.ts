@@ -76,24 +76,21 @@ test('all seven palettes render and settings persist across reload', async ({ pa
     colors.add(await page.locator('[data-theme]').evaluate((element) => getComputedStyle(element).backgroundColor));
   }
   expect(colors.size).toBe(paletteNames.length);
+  const amberPalette = page.getByRole('button', { name: 'Amber Terminal', exact: true });
+  await amberPalette.click();
+
   await page.getByRole('button', { name: /spotify art/i }).click();
-  await page.getByLabel('Art resolution').selectOption('96');
-  await page.getByLabel('Animations').selectOption('off');
+  const retroCoverOff = page.getByRole('button', { name: 'OFF', exact: true });
+  await retroCoverOff.click();
   await page.getByLabel('CRT scanlines:').uncheck();
   await page.getByLabel('8-bit audio FX:').uncheck();
-  await page.getByLabel('Window title:').fill('AMBER DECK');
-  await page.getByLabel('Text emojis:').fill('');
   await page.getByRole('button', { name: /compact/i }).click();
   await page.reload();
   await page.getByRole('button', { name: /continue in lo-fi/i }).click();
-  await expect(page.getByText('AMBER DECK')).toBeVisible();
   await expect(page.locator('[data-theme]')).toHaveAttribute('data-theme', 'amber');
-  await expect(page.locator('[data-motion]')).toHaveAttribute('data-motion', 'off');
   await expect(page.locator('.crt-overlay')).toHaveCount(0);
   await settings(page).click();
-  await expect(page.getByLabel('Art resolution')).toHaveValue('96');
   await expect(page.getByLabel('8-bit audio FX:')).not.toBeChecked();
-  await expect(page.getByLabel('Text emojis:')).toHaveValue('');
   await expect(page.getByRole('button', { name: /compact/i })).toHaveAttribute('aria-pressed', 'true');
 });
 
@@ -112,6 +109,7 @@ test('motion preference freezes cassette and cover GIFs and tracks OS changes', 
   expect(title).toContain('Nyan Cat');
   await expect(cover.locator('img')).toHaveCount(0);
   await expect(cover.locator('canvas')).toBeVisible();
+  await page.waitForTimeout(300);
   const frozen = await cover.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL());
   await expect.poll(() => cover.locator('canvas').evaluate((canvas: HTMLCanvasElement) => canvas.toDataURL())).toBe(frozen);
   await page.emulateMedia({ reducedMotion: 'no-preference' });

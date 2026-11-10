@@ -401,50 +401,25 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return () => window.removeEventListener('keydown', keydown);
   }, []);
 
-  // Synchronize playback info with macOS menu bar tray item & MenuBar popover
+  // Synchronize playback info with macOS menu bar tray item
   useEffect(() => {
-    const cleanTitle = currentTitle === 'NOTHING PLAYING' ? '' : currentTitle;
-    const cleanArtist = currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist;
-
     if (window.electronAPI?.setPlaybackInfo) {
       window.electronAPI.setPlaybackInfo({
-        title: cleanTitle,
-        artist: cleanArtist,
+        title: currentTitle === 'NOTHING PLAYING' ? '' : currentTitle,
+        artist: currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist,
         isPlaying,
       });
     }
+  }, [currentTitle, currentArtist, isPlaying]);
 
-    if (window.electronAPI?.broadcastPlaybackState) {
-      window.electronAPI.broadcastPlaybackState({
-        title: cleanTitle || 'PixelTunes',
-        artist: cleanArtist || 'Ready to Play',
-        album: currentAlbum || '',
-        artworkUrl: albumArtUrl || '',
-        durationMs,
-        progressMs,
-        isPlaying,
-        volumePercent: Math.round(isSpotifyConnected ? volume : volume * 100),
-        shuffleState,
-        repeatState,
-        isSpotifyConnected,
-      });
-    }
-  }, [currentTitle, currentArtist, currentAlbum, albumArtUrl, durationMs, progressMs, isPlaying, volume, shuffleState, repeatState, isSpotifyConnected]);
-
-  // Handle media actions triggered from macOS menu bar popover or tray context menu
+  // Handle media actions triggered from macOS menu bar tray context menu
   useEffect(() => {
-    return window.electronAPI?.onPlaybackAction?.((action, payload) => {
+    return window.electronAPI?.onPlaybackAction?.((action) => {
       if (action === 'toggle') handleTogglePlay();
       else if (action === 'next') handleNext();
       else if (action === 'previous') handlePrev();
-      else if (action === 'seek' && typeof payload?.positionMs === 'number') void seekTo(payload.positionMs);
-      else if (action === 'shuffle') handleToggleShuffle();
-      else if (action === 'repeat') handleCycleRepeat();
-      else if (action === 'volume' && typeof payload?.volumePercent === 'number') {
-        void handleVolumeChange(payload.volumePercent);
-      }
     });
-  }, [handleTogglePlay, handleNext, handlePrev, seekTo, handleToggleShuffle, handleCycleRepeat, handleVolumeChange]);
+  }, [handleTogglePlay, handleNext, handlePrev]);
 
   // Calculate progress percent
   const progressPercent = durationMs > 0 ? Math.max(0, Math.min(100, (progressMs / durationMs) * 100)) : 0;
