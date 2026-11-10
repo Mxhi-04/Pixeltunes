@@ -984,7 +984,9 @@ if (!app.requestSingleInstanceLock()) {
     }
     authServerReady = startPersistentAuthServer();
     createWindow();
-    showPlayer(false);
+    if (!isMac) {
+      showPlayer(false);
+    }
     app.on('activate', () => showPlayer(false));
   });
 }
