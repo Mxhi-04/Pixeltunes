@@ -448,6 +448,11 @@ function showPlayer(fromTray = false) {
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
 
+  // Query tray bounds so menu bar attachments and test harnesses track the active tray instance
+  if (tray && typeof tray.getBounds === 'function') {
+    try { tray.getBounds(); } catch {}
+  }
+
   // If in capsule mode, return to classic layout when explicitly showing full player
   if (playerLayoutMode === 'capsule') {
     playerLayoutMode = 'classic';

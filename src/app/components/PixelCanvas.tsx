@@ -212,17 +212,43 @@ export const PixelCanvas: React.FC<PixelCanvasProps> = ({
     navy, pink, periwinkle, cream, trackTitle, artistName, reducedMotion, pixelResolution]);
 
   const isPixelated = Number(pixelResolution) > 0;
-  const showSmoothCover = !isPixelated && mode === 'pixelArt' && Boolean(albumArtUrl);
+  const showSpotifyArtwork = mode === 'pixelArt' && Boolean(albumArtUrl) &&
+    albumArtUrl !== failedArtworkUrl && (albumArtUrl?.startsWith('https://') || albumArtUrl?.startsWith('http://'));
 
-  const art = showSmoothCover ? (
-    <img src={albumArtUrl || undefined} alt="" className="w-full h-full object-cover pointer-events-none" />
-  ) : showAnimatedGif ? (
+  const frameClass = 'relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden';
+
+  if (showSpotifyArtwork && albumArtUrl) {
+    const artwork = (
+      <img
+        src={albumArtUrl}
+        alt={`Cover art for ${trackTitle}`}
+        className={`max-w-full max-h-full rounded object-contain ${isPixelated ? 'pixelated' : ''}`}
+        style={{ imageRendering: isPixelated ? 'pixelated' : 'auto' }}
+        onError={() => setFailedArtworkUrl(albumArtUrl)}
+      />
+    );
+    return albumArtLink ? (
+      <a
+        href={albumArtLink}
+        target="_blank"
+        rel="noopener noreferrer"
+        aria-label={`Cover art for ${trackTitle}`}
+        title={`Open ${trackTitle} in Spotify`}
+        className={`${frameClass} z-[41] cursor-pointer`}
+      >
+        {artwork}
+      </a>
+    ) : (
+      <div className={`${frameClass} z-[41]`}>{artwork}</div>
+    );
+  }
+
+  const art = showAnimatedGif ? (
     <img src={coverUrl} alt="" className={`w-full h-full object-contain pointer-events-none ${isPixelated ? 'pixelated' : ''}`} />
   ) : (
     <canvas ref={canvasRef} width={240} height={240}
       className={`w-full h-full object-contain pointer-events-none ${isPixelated ? 'pixelated' : ''}`} aria-hidden="true" />
   );
-  const frameClass = 'relative w-full h-full flex items-center justify-center bg-[#191244] border-2 border-[#191244] overflow-hidden';
 
   if (mode === 'pixelArt' && albumArtLink) {
     return (

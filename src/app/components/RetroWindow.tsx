@@ -211,22 +211,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     setStatus('');
   }, [isSpotifyConnected]);
 
-  // Optimistic UI states for zero-latency instant feedback
-  const [optimisticPlaying, setOptimisticPlaying] = useState<boolean | null>(null);
+  // Optimistic volume state for zero-latency slider feedback
   const [optimisticVolume, setOptimisticVolume] = useState<number | null>(null);
-
-  useEffect(() => {
-    setOptimisticPlaying(null);
-  }, [spotifyPlayback?.is_playing]);
 
   useEffect(() => {
     setOptimisticVolume(null);
   }, [spotifyPlayback?.device?.volume_percent]);
 
   const activeSpotifyItem = isSpotifyConnected ? spotifyPlayback?.item : null;
-  const isPlaying = isSpotifyConnected
-    ? (optimisticPlaying !== null ? optimisticPlaying : Boolean(spotifyPlayback?.is_playing))
-    : builtinPlaying;
+  const isPlaying = isSpotifyConnected ? Boolean(spotifyPlayback?.is_playing) : builtinPlaying;
   const localTrack = !isSpotifyConnected && builtinStarted ? builtinTrack : null;
   const currentTitle = activeSpotifyItem?.name ?? localTrack?.name ?? 'NOTHING PLAYING';
   const currentArtist = activeSpotifyItem?.artists?.map((artist) => artist.name).join(', ') ||
@@ -280,10 +273,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     else playPlaySound();
 
     if (isSpotifyConnected) {
-      setOptimisticPlaying(nextPlaying);
       return runSpotifyCommand(
-        () => nextPlaying ? playSpotify() : pauseSpotify(),
-        () => setOptimisticPlaying(null)
+        () => nextPlaying ? playSpotify() : pauseSpotify()
       );
     }
     setBuiltinStarted(true);
@@ -307,12 +298,11 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   const handleStop = () => {
     playPauseSound();
     if (isSpotifyConnected) {
-      setOptimisticPlaying(false);
       setSeekDraft(0);
       if (isPlaying) {
         return runSpotifyCommand(
           async () => await pauseSpotify() && await seekSpotify(0),
-          () => { setOptimisticPlaying(null); setSeekDraft(null); }
+          () => { setSeekDraft(null); }
         );
       }
       if (activeSpotifyItem) return runSpotifyCommand(() => seekSpotify(0), () => setSeekDraft(null));
@@ -1244,9 +1234,23 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                 </div>
               </div>
 
-              {/* Pixel Equalizer Visualizer */}
-              <div className="pt-0.5">
-                <PixelVisualizer isPlaying={isPlaying} reducedMotion={reducedMotion} barCount={18} />
+              {/* Pixel Equalizer Visualizer & Spotify Link */}
+              <div className="pt-0.5 flex items-center justify-between gap-2">
+                {isSpotifyConnected ? (
+                  <a
+                    href={currentSpotifyUrl || 'https://open.spotify.com'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={currentSpotifyUrl ? 'Open current track in Spotify' : 'Open Spotify'}
+                    className="inline-flex h-7 items-center px-2 bg-[#fffdf5] border shrink-0"
+                    style={{ borderColor: theme.primaryBorder }}
+                  >
+                    <img src="./spotify-logo.svg" alt="" className="w-[100px] h-auto" style={{ imageRendering: 'auto' }} />
+                  </a>
+                ) : null}
+                <div className="flex-1 min-w-0">
+                  <PixelVisualizer isPlaying={isPlaying} reducedMotion={reducedMotion} barCount={isSpotifyConnected ? 12 : 18} />
+                </div>
               </div>
             </div>
           </div>

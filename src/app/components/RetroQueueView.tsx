@@ -245,14 +245,54 @@ export function RetroQueueView({
               playClickSound();
               onClose();
             }}
-            className="w-5 h-5 flex items-center justify-center bg-[#fffdf5] border border-[#191244] text-[9px] font-pixel font-bold hover:bg-[#ff7b90] hover:text-[#fffdf5] active:translate-y-0.5 transition-all cursor-pointer shadow-pixel-xs shrink-0"
-            title="Close Library (Return to Album Cover)"
-            aria-label="Close Library"
+            className="px-1.5 py-0.5 bg-[#fffdf5] border border-[#191244] text-[7px] font-pixel font-bold hover:bg-[#ff7b90] hover:text-[#fffdf5] active:translate-y-0.5 transition-all cursor-pointer shadow-pixel-xs shrink-0"
+            title="Return to Album Cover"
+            aria-label="COVER"
           >
-            ✕
+            COVER
           </button>
         </div>
       </div>
+
+      {isSpotifyConnected && !selectedPlaylist && (
+        <div className="flex items-center justify-between gap-1 px-2 py-1 text-[8px] font-pixel border-b border-[#191244] bg-[#fffdf5] shrink-0">
+          <div className="flex gap-2">
+            <button
+              type="button"
+              aria-pressed={list === 'playlists'}
+              onClick={() => {
+                playClickSound();
+                selectList('playlists');
+              }}
+              className={`underline cursor-pointer ${list === 'playlists' ? 'font-bold text-[#191244]' : 'text-[#4a3e77]'}`}
+            >
+              Playlists
+            </button>
+            <button
+              type="button"
+              aria-pressed={list === 'liked'}
+              onClick={() => {
+                playClickSound();
+                selectList('liked');
+              }}
+              className={`underline cursor-pointer ${list === 'liked' ? 'font-bold text-[#191244]' : 'text-[#4a3e77]'}`}
+            >
+              Liked songs
+            </button>
+            <button
+              type="button"
+              aria-pressed={list === 'queue'}
+              onClick={() => {
+                playClickSound();
+                selectList('queue');
+              }}
+              className={`underline cursor-pointer ${list === 'queue' ? 'font-bold text-[#191244]' : 'text-[#4a3e77]'}`}
+            >
+              Up next
+            </button>
+          </div>
+        </div>
+      )}
 
       {currentTrack && isSpotifyConnected && (
         <p className="bg-[#9df0cf] border-b-2 border-[#191244] px-2 py-1.5 font-pixel text-[8px] truncate">
@@ -404,6 +444,7 @@ export function RetroQueueView({
                 {isSpotifyConnected && list === 'playlists' && playlistObj && (
                   <button
                     type="button"
+                    aria-label={`Play ${entry.name}`}
                     title={`Play ${entry.name} now`}
                     onClick={(e) => {
                       e.stopPropagation();
