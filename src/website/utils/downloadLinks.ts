@@ -5,6 +5,6 @@ export const DOWNLOAD_LINKS = {
   latestRelease: 'https://github.com/Mxhi-04/Pixeltunes/releases/latest',
   allReleases: 'https://github.com/Mxhi-04/Pixeltunes/releases',
   repo: 'https://github.com/Mxhi-04/Pixeltunes',
-  version: 'v1.0.0',
+  version: 'v1.2.0',
 };
 

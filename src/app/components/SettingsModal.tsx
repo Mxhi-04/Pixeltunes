@@ -83,9 +83,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           className="border-b-4 px-3 py-1.5 flex items-center justify-between shrink-0 app-no-drag"
           style={{ backgroundColor: currentTheme.titleBarBg, borderColor: currentTheme.primaryBorder, color: currentTheme.controlBtnText, WebkitAppRegion: 'no-drag' as any }}
         >
-          <div className="flex items-center gap-1.5 app-no-drag">
+          <div className="flex items-center gap-2 app-no-drag">
             <span className="font-pixel text-xs tracking-wider font-bold">
               SETTINGS.INI
+            </span>
+            <span className="px-1.5 py-0.5 bg-[#fffdf5] text-[#191244] border border-[#191244] font-pixel text-[7.5px] font-bold shadow-pixel-xs">
+              v1.2.0
             </span>
           </div>
           <div className="flex items-center gap-2 app-no-drag">
@@ -469,8 +472,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </a>
           </div>
 
-          {/* Close */}
-          <div className="pt-2 flex justify-end">
+          {/* Close & Version Info */}
+          <div className="pt-2 flex justify-between items-center select-none">
+            <div className="flex items-center gap-1.5 opacity-70">
+              <span className="font-pixel text-[8px] text-[#191244] font-bold">
+                PIXELTUNES v1.2.0
+              </span>
+              <span className="text-[7.5px] text-[#191244] font-sans">
+                (90s Retro Music Player)
+              </span>
+            </div>
             <button
               onClick={() => {
                 playClickSound();

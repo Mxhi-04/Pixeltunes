@@ -124,6 +124,11 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
         onLayoutModeChange?.('classic');
       },
     },
+    {
+      label: 'About: v1.2.0',
+      hasArrow: true,
+      action: onOpenSettings,
+    },
   ];
 
   const handleMenuClick = () => {
