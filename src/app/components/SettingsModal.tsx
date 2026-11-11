@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { THEMES, RetroTheme } from '../../types/theme';
-import { PLAYER_SCALES, SCALES, PlayerScale, PlayerLayoutMode } from '../../types/scale';
+import { PlayerScale, PlayerLayoutMode } from '../../types/scale';
 import { playClickSound, setSoundEffectsEnabled } from '../../shared/services/soundEffects';
 import {
   isAutoLaunchEnabled,
@@ -27,8 +27,8 @@ interface SettingsModalProps {
   onTitleEmojisChange?: (emojis: string) => void;
   headerTag?: string;
   onHeaderTagChange?: (tag: string) => void;
-  scale: PlayerScale;
-  onScaleChange: (scale: PlayerScale) => void;
+  scale?: PlayerScale;
+  onScaleChange?: (scale: PlayerScale) => void;
   layoutMode?: PlayerLayoutMode;
   onLayoutModeChange?: (mode: PlayerLayoutMode) => void;
   pixelResolution?: number;
@@ -46,7 +46,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onToggleCrt,
   soundEnabled,
   onToggleSound,
-  scale,
+  scale = 'standard',
   onScaleChange,
   layoutMode = 'classic',
   onLayoutModeChange,
@@ -201,38 +201,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
-            {/* Window Size Scale (for Classic layout only) */}
-            {layoutMode === 'classic' && (
-              <div>
-                <div className="flex justify-between items-center mb-1 text-[8.5px] opacity-80 font-pixel">
-                  <span>WINDOW SIZE:</span>
-                  <span>{SCALES[scale].width} × {SCALES[scale].height}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {PLAYER_SCALES.map((s) => (
-                    <button
-                      key={s}
-                      aria-pressed={scale === s}
-                      type="button"
-                      onClick={() => {
-                        playClickSound();
-                        onScaleChange(s);
-                      }}
-                      className={`p-1.5 text-center border-2 border-[#191244] font-pixel text-[9px] transition-all cursor-pointer ${
-                        scale === s
-                          ? 'bg-[#191244] text-[#9df0cf] shadow-pixel-sm font-bold'
-                          : 'bg-[#fffdf5] text-[#191244] hover:bg-[#ffe6f0]'
-                      }`}
-                    >
-                      <div>{SCALES[s].label}</div>
-                      <div className="text-[7.5px] opacity-75 font-sans">
-                        {SCALES[s].width}px
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+
           </div>
 
           {/* Art Display Mode */}

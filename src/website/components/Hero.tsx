@@ -58,7 +58,7 @@ export const Hero: React.FC<HeroProps> = ({ onOpenPlayer }) => {
         <p className="mt-6 text-sm sm:text-base md:text-lg max-w-2xl font-sans text-[#cbd5e1] leading-relaxed">
           The aesthetic desktop player for macOS and Windows. Seamlessly controls your Spotify
           library with zero secrets, plays offline procedural lo-fi beats, and transforms your
-          workspace with 7 retro palettes and 23 animated pixel scenes.
+          workspace with 7 retro palettes and 26 animated pixel scenes.
         </p>
 
         {/* Feature Badges Pills */}

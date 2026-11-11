@@ -54,7 +54,7 @@ export function App() {
   const theme = THEMES[themeId];
   const [artMode, setArtMode] = usePreference<ArtMode>('art_mode', 'pixelCovers', ['pixelCovers', 'pixelArt', 'cassette']);
   const [pixelResolution, setPixelResolution] = usePreference<string>('pixel_resolution', '180', ['0', '180']);
-  const [scale, setScale] = usePreference<PlayerScale>('scale', 'standard', PLAYER_SCALES);
+  const [scale, setScale] = usePreference<PlayerScale>('scale', 'tiny', PLAYER_SCALES);
   const [layoutMode, setLayoutMode] = usePreference<PlayerLayoutMode>('layout_mode', 'classic', PLAYER_LAYOUT_MODES);
   const [crt, setCrt] = usePreference('crt', 'on', ['on', 'off']);
   const [systemReduced, setSystemReduced] = useState(() => (
@@ -239,7 +239,7 @@ export function App() {
   const IPOD_WIDTH = 270;
   const IPOD_HEIGHT = 475;
   const CAPSULE_WIDTH = 400;
-  const CAPSULE_HEIGHT = 100;
+  const CAPSULE_HEIGHT = 106;
   const isCard = layoutMode === 'card';
   const isIpod = layoutMode === 'ipod';
   const isCapsule = layoutMode === 'capsule';
@@ -260,12 +260,12 @@ export function App() {
     if (isElectron && window.electronAPI?.setSize) {
       if (layoutMode === 'ipod') {
         const { width, height } = getIpodDimensions(scale);
-        window.electronAPI.setSize(width, height);
+        window.electronAPI.setSize(width, height, { minWidth: 230, minHeight: 405 });
       } else if (layoutMode === 'card') {
         const { width, height } = getCardDimensions(scale);
-        window.electronAPI.setSize(width, height);
-      } else if (layoutMode === 'capsule') {
-        window.electronAPI.setSize(CAPSULE_WIDTH, CAPSULE_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
+        window.electronAPI.setSize(width, height, { minWidth: 256, minHeight: 368 });
+      } else {
+        window.electronAPI.setSize(480, 273, { minWidth: 480, minHeight: 273 });
       }
     }
   }, []);
@@ -276,14 +276,12 @@ export function App() {
     if (isElectron && window.electronAPI?.setSize) {
       if (mode === 'ipod') {
         const { width, height } = getIpodDimensions(scale);
-        window.electronAPI.setSize(width, height);
+        window.electronAPI.setSize(width, height, { minWidth: 230, minHeight: 405 });
       } else if (mode === 'card') {
         const { width, height } = getCardDimensions(scale);
-        window.electronAPI.setSize(width, height);
-      } else if (mode === 'capsule') {
-        window.electronAPI.setSize(CAPSULE_WIDTH, CAPSULE_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
+        window.electronAPI.setSize(width, height, { minWidth: 256, minHeight: 368 });
       } else {
-        window.electronAPI.setSize(SCALES[scale].width, SCALES[scale].height);
+        window.electronAPI.setSize(480, 273, { minWidth: 480, minHeight: 273 });
       }
     }
   };

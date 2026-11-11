@@ -11,6 +11,8 @@ const SHOWCASE_COVERS = [
   { name: 'Nyan Cat Space', file: '/covers/01_nyan_cat.gif', track: 'RAINBOW RUNNER' },
   { name: 'Pikachu Lofi', file: '/covers/02_pokemon_pikachu.gif', track: 'PALLET TOWN BEATS' },
   { name: 'Saturn Galaxy', file: '/covers/00_saturn_galaxy.png', track: 'COSMIC DUST' },
+  { name: 'Cyber Butterfly', file: '/covers/22_cyber_butterfly.gif', track: 'SYNTHWAVE DREAMS' },
+  { name: 'Celestial Star', file: '/covers/23_celestial_star.gif', track: 'ASTRAL SUPERNOVA' },
 ];
 
 interface LivePlayerShowcaseProps {
@@ -85,7 +87,7 @@ export const LivePlayerShowcase: React.FC<LivePlayerShowcaseProps> = ({ onOpenFu
   }, [isPlaying, theme]);
 
   const togglePlay = () => {
-    try { playClickSound(); } catch {}
+    try { playClickSound(); } catch { }
     if (isPlaying) {
       lofiEngine.pause();
     } else {
@@ -94,13 +96,13 @@ export const LivePlayerShowcase: React.FC<LivePlayerShowcaseProps> = ({ onOpenFu
   };
 
   const handleNext = () => {
-    try { playClickSound(); } catch {}
+    try { playClickSound(); } catch { }
     lofiEngine.nextTrack();
     setCurrentCoverIndex((prev) => (prev + 1) % SHOWCASE_COVERS.length);
   };
 
   const handlePrev = () => {
-    try { playClickSound(); } catch {}
+    try { playClickSound(); } catch { }
     lofiEngine.previousTrack();
     setCurrentCoverIndex((prev) => (prev - 1 + SHOWCASE_COVERS.length) % SHOWCASE_COVERS.length);
   };
@@ -154,14 +156,13 @@ export const LivePlayerShowcase: React.FC<LivePlayerShowcaseProps> = ({ onOpenFu
                     key={key}
                     type="button"
                     onClick={() => {
-                      try { playClickSound(); } catch {}
+                      try { playClickSound(); } catch { }
                       setActiveThemeKey(key);
                     }}
-                    className={`p-2 border-2 text-left flex items-center gap-2 transition-all cursor-pointer ${
-                      activeThemeKey === key
+                    className={`p-2 border-2 text-left flex items-center gap-2 transition-all cursor-pointer ${activeThemeKey === key
                         ? 'border-[#ffd269] bg-[#191244] scale-[1.02]'
                         : 'border-[#191244] bg-[#0c0820] hover:border-white/40'
-                    }`}
+                      }`}
                   >
                     <span
                       className="w-3.5 h-3.5 border border-black/40 shrink-0"
@@ -183,9 +184,8 @@ export const LivePlayerShowcase: React.FC<LivePlayerShowcaseProps> = ({ onOpenFu
                 <button
                   type="button"
                   onClick={() => setCrtOn((v) => !v)}
-                  className={`px-3 py-1 font-pixel text-[8px] border-2 border-[#191244] cursor-pointer ${
-                    crtOn ? 'bg-[#9df0cf] text-[#191244]' : 'bg-[#191244] text-white/50'
-                  }`}
+                  className={`px-3 py-1 font-pixel text-[8px] border-2 border-[#191244] cursor-pointer ${crtOn ? 'bg-[#9df0cf] text-[#191244]' : 'bg-[#191244] text-white/50'
+                    }`}
                 >
                   {crtOn ? 'ENABLED' : 'DISABLED'}
                 </button>

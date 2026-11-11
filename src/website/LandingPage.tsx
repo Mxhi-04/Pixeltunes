@@ -41,7 +41,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onOpenPlayer }) => {
         {/* 5. 7 Authentic Retro Palettes Matrix */}
         <ThemeMatrix />
 
-        {/* 6. 23 Animated Pixel Scenes Gallery */}
+        {/* 6. 26 Animated Pixel Scenes Gallery */}
         <PixelArtGallery />
 
         {/* 7. macOS & Windows Specifications Comparison */}

@@ -121,8 +121,7 @@ test('Spotify Connect sends exact play payloads for track, album, and playlist l
   ]);
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('main-play-btn')).toHaveAttribute('title', 'Pause');
-  await expect(page.getByRole('link', { name: 'Open current track in Spotify' }))
-    .toHaveAttribute('href', `https://open.spotify.com/track/${trackId}`);
+  await expect(page.getByTitle(track.name)).toBeVisible();
 });
 
 test('Spotify artwork links to the track and a failed image falls back to generated art', async ({ page }) => {
@@ -201,14 +200,14 @@ test('Spotify playback keeps paused metadata, seeks with integer milliseconds, a
 
 test('rate-limited Spotify polling backs off and preserves the last confirmed track', async ({ page }) => {
   const mocked = await connectMock(page);
-  await expect(page.getByRole('link', { name: 'Open current track in Spotify' })).toBeVisible();
+  await expect(page.getByTitle(track.name)).toBeVisible();
   const initial = mocked.pollCount();
   mocked.setStatus(429);
   await expect.poll(() => mocked.pollCount()).toBeGreaterThan(initial);
   const requests = mocked.pollCount();
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 2300)));
   expect(mocked.pollCount()).toBe(requests);
-  await expect(page.getByRole('link', { name: 'Open current track in Spotify' })).toBeVisible();
+  await expect(page.getByTitle(track.name)).toBeVisible();
 });
 
 test('liked songs distinguish API errors and select only after Spotify accepts playback', async ({ page }) => {

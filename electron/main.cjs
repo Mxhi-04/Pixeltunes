@@ -29,6 +29,7 @@ function applyDockIcon() {
   }
 }
 let mainWindow = null;
+let popoverWindow = null;
 let tray = null;
 let isQuitting = false;
 let isAlwaysOnTop = true;
@@ -38,6 +39,7 @@ let currentAspectRatio = 720 / 410;
 let persistentAuthServer = null;
 let isTogglingPopover = false;
 let showInDock = false;
+let currentPlaybackState = null;
 
 // Spotify PKCE Public Client (No Client Secret Required Anywhere!)
 const SPOTIFY_CLIENT_ID = process.env.VITE_SPOTIFY_CLIENT_ID ||
@@ -89,7 +91,7 @@ async function saveRefreshToken(session, version) {
     if (!await safeStorage.isAsyncEncryptionAvailable()) return;
     if (process.platform === 'linux' && safeStorage.getSelectedStorageBackend() === 'basic_text') return;
     const encrypted = await safeStorage.encryptStringAsync(JSON.stringify(session));
-    if (version === sessionVersion && savedSession === session) {
+    if (version === sessionVersion && (savedSession === session || savedSession?.refreshToken === session.refreshToken)) {
       const tokenPath = getSecureTokenPath();
       fs.writeFileSync(`${tokenPath}.tmp`, encrypted, { mode: 0o600 });
       fs.renameSync(`${tokenPath}.tmp`, tokenPath);
@@ -168,20 +170,63 @@ function performPkceTokenRefresh() {
 }
 
 function launchSpotifyInBackground(callback) {
+  const cb = typeof callback === 'function' ? callback : () => { };
   const { exec, execFile, spawn } = require('child_process');
   if (process.platform === 'darwin') {
-    execFile('/usr/bin/open', ['-j', '-g', '-b', 'com.spotify.client'], (error) => callback(!error));
+    // 1. Launch Spotify in background if not already open
+    execFile('/usr/bin/open', ['-j', '-g', '-b', 'com.spotify.client'], (error) => {
+      cb(!error);
+    });
+
+    // 2. Continuous background poller for cold launches:
+    // hides Spotify immediately whenever its process/window appears
+    const hideAppleScript = [
+      'try',
+      '  tell application "System Events"',
+      '    if exists (process "Spotify") then',
+      '      set visible of process "Spotify" to false',
+      '    end if',
+      '  end tell',
+      'end try',
+      'try',
+      '  tell application "Finder"',
+      '    if exists (process "Spotify") then',
+      '      set visible of process "Spotify" to false',
+      '    end if',
+      '  end tell',
+      'end try',
+    ].join('\n');
+
+    let ticks = 0;
+    const maxTicks = 25; // 25 * 350ms = 8.75s continuous watch
+    const poller = setInterval(() => {
+      ticks++;
+      execFile('/usr/bin/osascript', ['-e', hideAppleScript], () => { });
+      if (ticks >= maxTicks) {
+        clearInterval(poller);
+      }
+    }, 350);
   } else if (process.platform === 'win32') {
-    exec('start "" /min "spotify:"', (error) => callback(!error));
+    exec('start "" /min "spotify:"', (error) => {
+      cb(!error);
+    });
+
+    const psMinimize = 'powershell -NoProfile -NonInteractive -Command "$s = Get-Process spotify -ErrorAction SilentlyContinue; if ($s) { (Add-Type \'[DllImport(\\"user32.dll\\")] public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);\' -Name Win32ShowWindow -PassThru)::ShowWindow($s[0].MainWindowHandle, 2) }"';
+    let ticks = 0;
+    const interval = setInterval(() => {
+      ticks++;
+      exec(psMinimize, () => { });
+      if (ticks >= 16) clearInterval(interval);
+    }, 500);
   } else if (process.platform === 'linux') {
     const child = spawn('spotify', ['--minimized'], { detached: true, stdio: 'ignore' });
-    child.once('error', () => callback(false));
+    child.once('error', () => cb(false));
     child.once('spawn', () => {
       child.unref();
-      callback(true);
+      cb(true);
     });
   } else {
-    callback(false);
+    cb(false);
   }
 }
 
@@ -332,11 +377,11 @@ function createWindow() {
   const { width: screenWidth } = primaryDisplay.workAreaSize;
 
   mainWindow = new BrowserWindow({
-    width: 720,
-    height: 410,
-    minWidth: 160,
-    minHeight: 28,
-    x: Math.round(screenWidth - 740),
+    width: 480,
+    height: 273,
+    minWidth: 480,
+    minHeight: 273,
+    x: Math.round(screenWidth - 500),
     y: 80,
     show: false,
     frame: false,
@@ -411,7 +456,7 @@ function createWindow() {
   mainWindow.webContents.on('will-redirect', (event) => event.preventDefault());
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (URL.parse(url)?.protocol === 'https:') {
-      shell.openExternal(url).catch(() => {});
+      shell.openExternal(url).catch(() => { });
     }
     return { action: 'deny' };
   });
@@ -423,20 +468,9 @@ function createWindow() {
     }
   });
 
-  mainWindow.on('blur', () => {
-    // If the window is in capsule/popover mode, auto-dismiss when user clicks back into Chrome/active app
-    if (playerLayoutMode === 'capsule' && !isTogglingPopover && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.hide();
-    }
-  });
-
   mainWindow.on('restore', () => {
-    if (process.platform === 'darwin' && isAlwaysOnTop) {
-      mainWindow.setAlwaysOnTop(true, 'floating', 1);
-      mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-    }
-    mainWindow.showInactive();
-    mainWindow.moveTop();
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   mainWindow.on('closed', () => {
@@ -445,20 +479,15 @@ function createWindow() {
 }
 
 function showPlayer(fromTray = false) {
+  if (isMac && (!tray || tray.isDestroyed())) {
+    createMenuBar();
+  }
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
 
   // Query tray bounds so menu bar attachments and test harnesses track the active tray instance
   if (tray && typeof tray.getBounds === 'function') {
-    try { tray.getBounds(); } catch {}
-  }
-
-  // If in capsule mode, return to classic layout when explicitly showing full player
-  if (playerLayoutMode === 'capsule') {
-    playerLayoutMode = 'classic';
-    mainWindow.webContents.send('window:layout-changed', 'classic');
-    const standardSize = playerSizes[playerScale] || playerSizes.standard;
-    resizePlayer(standardSize.width, standardSize.height);
+    try { tray.getBounds(); } catch { }
   }
 
   // Always spawn/center player at the center of the active display work area
@@ -549,7 +578,7 @@ function buildTrayMenu() {
           },
         },
         {
-          label: 'Menu Bar Capsule',
+          label: 'Capsule Widget',
           type: 'radio',
           checked: playerLayoutMode === 'capsule',
           click: () => {
@@ -559,20 +588,6 @@ function buildTrayMenu() {
           },
         },
       ],
-    },
-    {
-      label: 'Window Size',
-      submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
-        label: `${label} (${width} × ${height})`,
-        type: 'radio',
-        checked: playerScale === id,
-        click: () => {
-          playerScale = id;
-          applyPlayerScale(id);
-          mainWindow?.webContents.send('window:scale-changed', id);
-          showPlayer(true);
-        },
-      })),
     },
     {
       label: 'Keep Player on Top',
@@ -612,30 +627,87 @@ function buildTrayMenu() {
 }
 
 function updateTrayDisplay() {
-  if (!tray) return;
-  const text = currentPlaybackInfo.title
-    ? `${currentPlaybackInfo.isPlaying ? '▶' : '❚❚'} ${currentPlaybackInfo.artist ? `${currentPlaybackInfo.artist} / ` : ''}${currentPlaybackInfo.title}`
+  if (!tray || tray.isDestroyed()) return;
+  const tooltipText = currentPlaybackInfo.title
+    ? `${currentPlaybackInfo.isPlaying ? '▶' : '❚❚'} ${currentPlaybackInfo.artist ? `${currentPlaybackInfo.artist} - ` : ''}${currentPlaybackInfo.title}`
     : 'PixelTunes: No Track Playing';
-  tray.setToolTip(text);
+  tray.setToolTip(tooltipText);
+
+  if (process.platform === 'darwin') {
+    if (currentPlaybackInfo.title) {
+      const truncated = currentPlaybackInfo.title.length > 18
+        ? currentPlaybackInfo.title.slice(0, 16) + '…'
+        : currentPlaybackInfo.title;
+      tray.setTitle(` ${currentPlaybackInfo.isPlaying ? '▶' : '❚❚'} ${truncated}`);
+    } else {
+      tray.setTitle(' ♫');
+    }
+  }
 }
 
-function togglePopover() {
-  if (!mainWindow) createWindow();
+function createPopoverWindow() {
+  if (popoverWindow && !popoverWindow.isDestroyed()) return popoverWindow;
 
-  if (isTogglingPopover) return;
-  isTogglingPopover = true;
-  setTimeout(() => { isTogglingPopover = false; }, 250);
+  const POPOVER_WIDTH = 400;
+  const POPOVER_HEIGHT = 106;
 
-  if (mainWindow.isVisible() && playerLayoutMode === 'capsule') {
-    mainWindow.hide();
-    return;
+  popoverWindow = new BrowserWindow({
+    width: POPOVER_WIDTH,
+    height: POPOVER_HEIGHT,
+    show: false,
+    frame: false,
+    transparent: true,
+    hasShadow: false,
+    resizable: false,
+    movable: false,
+    fullscreenable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    backgroundColor: '#00000000',
+    title: 'PixelTunes Menu Bar Player',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: true,
+    },
+  });
+
+  if (process.platform === 'darwin') {
+    popoverWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
+    popoverWindow.setAlwaysOnTop(true, 'status', 1);
   }
 
-  playerLayoutMode = 'capsule';
-  mainWindow.webContents.send('window:layout-changed', 'capsule');
+  const distHtmlPath = path.join(__dirname, '../dist/index.html');
+  const forceDev = process.argv.includes('--dev') || process.env.NODE_ENV === 'development';
+  const requestedDevUrl = URL.parse(process.env.VITE_DEV_SERVER_URL || '');
+  const devServerUrl = requestedDevUrl?.protocol === 'http:' &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(requestedDevUrl.hostname)
+    ? requestedDevUrl.origin : 'http://127.0.0.1:5173';
 
-  const POPOVER_WIDTH = 390;
-  const POPOVER_HEIGHT = 100;
+  if (forceDev || !fs.existsSync(distHtmlPath)) {
+    popoverWindow.loadURL(`${devServerUrl}?view=menubar`);
+  } else {
+    popoverWindow.loadFile(distHtmlPath, { query: { view: 'menubar' } });
+  }
+
+  popoverWindow.on('blur', () => {
+    if (!isTogglingPopover && popoverWindow && !popoverWindow.isDestroyed()) {
+      popoverWindow.hide();
+    }
+  });
+
+  popoverWindow.on('closed', () => {
+    popoverWindow = null;
+  });
+
+  return popoverWindow;
+}
+
+function positionPopover() {
+  if (!popoverWindow || popoverWindow.isDestroyed()) return;
+  const POPOVER_WIDTH = 400;
+  const POPOVER_HEIGHT = 106;
 
   const anchor = tray?.getBounds();
   if (anchor && anchor.width > 0 && anchor.x > 0) {
@@ -648,43 +720,98 @@ function togglePopover() {
     const clampedX = Math.max(screenBounds.x + 8, Math.min(x, screenBounds.x + screenBounds.width - POPOVER_WIDTH - 8));
     const clampedY = Math.max(screenBounds.y, Math.min(y, screenBounds.y + screenBounds.height - POPOVER_HEIGHT - 8));
 
-    mainWindow.setBounds({
+    popoverWindow.setBounds({
       x: clampedX,
       y: clampedY,
       width: POPOVER_WIDTH,
       height: POPOVER_HEIGHT,
     });
+  }
+}
+
+function showPopover() {
+  if (!popoverWindow || popoverWindow.isDestroyed()) {
+    createPopoverWindow();
+  }
+  positionPopover();
+
+  if (currentPlaybackState && popoverWindow && !popoverWindow.isDestroyed()) {
+    popoverWindow.webContents.send('playback:state-sync', currentPlaybackState);
+  }
+  if (popoverWindow && !popoverWindow.isDestroyed()) {
+    popoverWindow.showInactive();
+    popoverWindow.moveTop();
+  }
+}
+
+function hidePopover() {
+  if (popoverWindow && !popoverWindow.isDestroyed() && popoverWindow.isVisible()) {
+    popoverWindow.hide();
+  }
+}
+
+function togglePopover() {
+  if (isTogglingPopover) return;
+  isTogglingPopover = true;
+  setTimeout(() => { isTogglingPopover = false; }, 250);
+
+  if (!popoverWindow || popoverWindow.isDestroyed()) {
+    createPopoverWindow();
+  }
+
+  if (popoverWindow.isVisible()) {
+    hidePopover();
   } else {
-    resizePlayer(POPOVER_WIDTH, POPOVER_HEIGHT, { dockToMenuBar: true, isMenuBar: true });
+    showPopover();
   }
-
-  if (process.platform === 'darwin') {
-    mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true, skipTransformProcessType: true });
-    mainWindow.setAlwaysOnTop(true, 'status', 1);
-  }
-
-  mainWindow.showInactive();
-  mainWindow.moveTop();
 }
 
 function createMenuBar() {
+  if (tray && !tray.isDestroyed()) return tray;
+
   const iconPath = path.join(__dirname, 'assets', 'PixelTunesTemplate.png');
-  let icon = null;
   try {
-    icon = nativeImage.createFromPath(iconPath);
-    if (!icon.isEmpty()) {
-      icon.setTemplateImage(true);
-    }
+    tray = new Tray(iconPath);
   } catch (err) {
-    console.warn('[PixelTunes] Could not load tray icon:', err.message);
+    console.warn('[PixelTunes] Could not load tray from path, trying nativeImage:', err.message);
+    try {
+      const icon = nativeImage.createFromPath(iconPath);
+      icon.setTemplateImage(true);
+      tray = new Tray(icon);
+    } catch (e) {
+      console.warn('[PixelTunes] Could not load tray icon:', e.message);
+      tray = new Tray(appIconPath);
+    }
   }
 
-  tray = icon && !icon.isEmpty() ? new Tray(icon) : new Tray(iconPath);
   tray.setToolTip('PixelTunes');
   tray.setIgnoreDoubleClickEvents(true);
 
+  if (process.platform === 'darwin') {
+    tray.setTitle(' ♫');
+  }
+
+  updateTrayDisplay();
+
   tray.on('click', () => {
     togglePopover();
+  });
+
+  let hideTimeout = null;
+  tray.on('mouse-enter', () => {
+    if (hideTimeout) {
+      clearTimeout(hideTimeout);
+      hideTimeout = null;
+    }
+    showPopover();
+  });
+
+  tray.on('mouse-leave', () => {
+    hideTimeout = setTimeout(() => {
+      if (popoverWindow && !popoverWindow.isDestroyed() && !popoverWindow.isFocused()) {
+        hidePopover();
+      }
+    }, 400);
   });
 
   tray.on('right-click', () => {
@@ -692,9 +819,12 @@ function createMenuBar() {
   });
 }
 
-// Accept IPC only from the main app document.
+// Accept IPC from either the main player widget or the menu bar popover.
 function fromApp(event) {
-  return Boolean(mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents);
+  return Boolean(
+    (mainWindow && !mainWindow.isDestroyed() && event.sender === mainWindow.webContents) ||
+    (popoverWindow && !popoverWindow.isDestroyed() && event.sender === popoverWindow.webContents)
+  );
 }
 
 function handle(channel, handler) {
@@ -706,10 +836,6 @@ function handle(channel, handler) {
 
 ipcMain.on('window:minimize', (event) => {
   if (!fromApp(event) || !mainWindow) return;
-  if (process.platform === 'darwin') {
-    mainWindow.setVisibleOnAllWorkspaces(false);
-    mainWindow.setAlwaysOnTop(false);
-  }
   mainWindow.minimize();
 });
 
@@ -737,7 +863,7 @@ function resizePlayer(width, height, options = {}) {
   const currentBounds = mainWindow.getBounds();
   const display = screen.getDisplayMatching(currentBounds);
   const { workArea, bounds: screenBounds } = display;
-  const isMenuBar = Boolean(options.dockToMenuBar || options.isMenuBar || playerLayoutMode === 'capsule');
+  const isMenuBar = Boolean(options.dockToMenuBar || options.isMenuBar);
 
   const fit = Math.min(1, screenBounds.width / width, screenBounds.height / height);
   const w = Math.round(width * fit);
@@ -790,15 +916,28 @@ ipcMain.on('window:set-scale', (event, scale) => {
 
 ipcMain.on('window:set-size', (event, dimensions) => {
   if (!fromApp(event)) return;
-  const { width, height, dockToMenuBar, isMenuBar } = dimensions || {};
+  const { width, height, dockToMenuBar, isMenuBar, minWidth, minHeight } = dimensions || {};
   if (!Number.isFinite(width) || !Number.isFinite(height)) return;
   playerScale = null;
-  resizePlayer(Math.max(160, width), Math.max(28, height), { dockToMenuBar, isMenuBar });
+
+  const effectiveMinWidth = minWidth ?? (playerLayoutMode === 'classic' ? 480 : playerLayoutMode === 'card' ? 256 : 230);
+  const effectiveMinHeight = minHeight ?? (playerLayoutMode === 'classic' ? 273 : playerLayoutMode === 'card' ? 368 : 405);
+
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMinimumSize(effectiveMinWidth, effectiveMinHeight);
+  }
+
+  resizePlayer(Math.max(effectiveMinWidth, width), Math.max(effectiveMinHeight, height), { dockToMenuBar, isMenuBar });
 });
 
 ipcMain.on('window:set-layout-mode', (event, mode) => {
   if (!fromApp(event) || typeof mode !== 'string') return;
   playerLayoutMode = mode;
+  const effectiveMinWidth = playerLayoutMode === 'classic' ? 480 : playerLayoutMode === 'card' ? 256 : 230;
+  const effectiveMinHeight = playerLayoutMode === 'classic' ? 273 : playerLayoutMode === 'card' ? 368 : 405;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.setMinimumSize(effectiveMinWidth, effectiveMinHeight);
+  }
 });
 
 ipcMain.on('tray:set-playback-info', (event, info) => {
@@ -810,6 +949,57 @@ ipcMain.on('tray:set-playback-info', (event, info) => {
       isPlaying: Boolean(info.isPlaying),
     };
     updateTrayDisplay();
+  }
+});
+
+ipcMain.on('playback:broadcast-state', (event, state) => {
+  if (!fromApp(event)) return;
+  currentPlaybackState = state;
+  if (state?.title) {
+    currentPlaybackInfo = {
+      title: state.title,
+      artist: state.artist || '',
+      isPlaying: Boolean(state.isPlaying),
+    };
+    updateTrayDisplay();
+  }
+  if (popoverWindow && !popoverWindow.isDestroyed() && event.sender !== popoverWindow.webContents) {
+    popoverWindow.webContents.send('playback:state-sync', state);
+  }
+  if (mainWindow && !mainWindow.isDestroyed() && event.sender !== mainWindow.webContents) {
+    mainWindow.webContents.send('playback:state-sync', state);
+  }
+});
+
+ipcMain.on('playback:action-send', (event, { action, payload }) => {
+  if (!fromApp(event)) return;
+  if (action === 'show-player') {
+    showPlayer(true);
+    return;
+  }
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('playback:action', action, payload);
+  }
+});
+
+ipcMain.on('window:show-player', () => {
+  showPlayer(true);
+});
+
+ipcMain.on('popover:hide', () => {
+  hidePopover();
+});
+
+ipcMain.on('popover:set-height', (event, height) => {
+  if (!fromApp(event)) return;
+  if (popoverWindow && !popoverWindow.isDestroyed() && typeof height === 'number') {
+    const bounds = popoverWindow.getBounds();
+    popoverWindow.setBounds({
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: Math.round(height),
+    });
   }
 });
 
@@ -877,17 +1067,18 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => { isQuitting = true; });
   app.on('will-quit', () => {
     tray?.destroy();
+    popoverWindow?.destroy();
     persistentAuthServer?.close();
   });
   app.on('window-all-closed', () => {
     if (!isMac) app.quit();
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     try {
       const configured = fs.readFileSync(getSpotifyClientIdPath(), 'utf8').trim();
       if (/^[a-f0-9]{32}$/i.test(configured)) lastClientId = configured;
-    } catch {}
+    } catch { }
     if (isMac) {
       applyDockIcon();
       createMenuBar();
@@ -900,7 +1091,9 @@ if (!app.requestSingleInstanceLock()) {
       }
     }
     authServerReady = startPersistentAuthServer();
+    await authServerReady;
     createWindow();
+    launchSpotifyInBackground();
     if (!isMac) {
       showPlayer(false);
     }

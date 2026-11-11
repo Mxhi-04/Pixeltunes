@@ -41,12 +41,12 @@ const FEATURES: FeatureCard[] = [
   },
   {
     tag: 'DISPLAY // 04',
-    title: 'CRT SCANLINES & 23 SCENES',
+    title: 'CRT SCANLINES & 26 SCENES',
     description:
-      'Toggle authentic phosphor CRT scanlines and chromatic aberration alongside 23 animated pixel scenes inspired by 90s gaming history.',
+      'Toggle authentic phosphor CRT scanlines and chromatic aberration alongside 26 animated pixel scenes inspired by 90s gaming history.',
     icon: <Tv className="w-5 h-5 text-[#8fa2d4]" />,
     accent: '#8fa2d4',
-    badge: '23 ART COVERS',
+    badge: '26 ART COVERS',
   },
   {
     tag: 'NATIVE // 05',

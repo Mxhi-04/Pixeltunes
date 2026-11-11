@@ -391,25 +391,50 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return () => window.removeEventListener('keydown', keydown);
   }, []);
 
-  // Synchronize playback info with macOS menu bar tray item
+  // Synchronize playback info with macOS menu bar tray item & MenuBar popover
   useEffect(() => {
+    const cleanTitle = currentTitle === 'NOTHING PLAYING' ? '' : currentTitle;
+    const cleanArtist = currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist;
+
     if (window.electronAPI?.setPlaybackInfo) {
       window.electronAPI.setPlaybackInfo({
-        title: currentTitle === 'NOTHING PLAYING' ? '' : currentTitle,
-        artist: currentArtist.startsWith('PRESS PLAY') ? '' : currentArtist,
+        title: cleanTitle,
+        artist: cleanArtist,
         isPlaying,
       });
     }
-  }, [currentTitle, currentArtist, isPlaying]);
 
-  // Handle media actions triggered from macOS menu bar tray context menu
+    if (window.electronAPI?.broadcastPlaybackState) {
+      window.electronAPI.broadcastPlaybackState({
+        title: cleanTitle || 'PixelTunes',
+        artist: cleanArtist || 'Ready to Play',
+        album: currentAlbum || '',
+        artworkUrl: albumArtUrl || '',
+        durationMs,
+        progressMs,
+        isPlaying,
+        volumePercent: volume,
+        shuffleState,
+        repeatState,
+        isSpotifyConnected,
+      });
+    }
+  }, [currentTitle, currentArtist, currentAlbum, albumArtUrl, durationMs, progressMs, isPlaying, volume, shuffleState, repeatState, isSpotifyConnected]);
+
+  // Handle media actions triggered from macOS menu bar popover or tray context menu
   useEffect(() => {
-    return window.electronAPI?.onPlaybackAction?.((action) => {
+    return window.electronAPI?.onPlaybackAction?.((action, payload) => {
       if (action === 'toggle') handleTogglePlay();
       else if (action === 'next') handleNext();
       else if (action === 'previous') handlePrev();
+      else if (action === 'seek' && typeof payload?.positionMs === 'number') void seekTo(payload.positionMs);
+      else if (action === 'volume' && typeof payload?.volumePercent === 'number') {
+        void handleVolumeChange(payload.volumePercent);
+      } else if (action === 'open-settings') {
+        onOpenSettingsModal(null as any);
+      }
     });
-  }, [handleTogglePlay, handleNext, handlePrev]);
+  }, [handleTogglePlay, handleNext, handlePrev, seekTo, handleVolumeChange, onOpenSettingsModal]);
 
   // Calculate progress percent
   const progressPercent = durationMs > 0 ? Math.max(0, Math.min(100, (progressMs / durationMs) * 100)) : 0;
@@ -443,16 +468,15 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return (
       <div
         className="w-full h-full relative select-none flex items-center justify-center overflow-hidden bg-transparent"
-        style={{ fontFamily: '"Silkscreen", "Press Start 2P", monospace' }}
+        style={{ fontFamily: '"Press Start 2P", monospace' }}
       >
+        {crtEnabled && <div aria-hidden="true" className="absolute inset-0 crt-overlay z-40 pointer-events-none" />}
         <RetroCapsuleWidget
-          layoutMode={layoutMode}
-          onLayoutModeChange={onLayoutModeChange}
           isPlaying={isPlaying}
           onTogglePlay={handleTogglePlay}
           onNext={handleNext}
           onPrevious={handlePrev}
-          onOpenSettings={(opener) => onOpenSettingsModal(opener as any)}
+          onOpenSettings={() => onOpenSettingsModal(null as any)}
           progressMs={progressMs}
           durationMs={durationMs}
           seekTo={seekTo}
@@ -460,16 +484,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
           onVolumeChange={handleVolumeChange}
           currentTitle={currentTitle}
           currentArtist={currentArtist}
-          currentAlbum={currentAlbum}
-          albumArtUrl={albumArtUrl}
-          currentSpotifyUrl={currentSpotifyUrl}
-          isSpotifyConnected={isSpotifyConnected}
-          onOpenSpotifyModal={onOpenSpotifyModal}
           onCloseWindow={handleCloseWindow}
-          onMinimizeWindow={handleMinimizeWindow}
-          theme={theme}
-          reducedMotion={reducedMotion}
-          scale={scale}
+          onExpand={() => onLayoutModeChange?.('classic')}
         />
       </div>
     );
@@ -1234,23 +1250,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
                 </div>
               </div>
 
-              {/* Pixel Equalizer Visualizer & Spotify Link */}
-              <div className="pt-0.5 flex items-center justify-between gap-2">
-                {isSpotifyConnected ? (
-                  <a
-                    href={currentSpotifyUrl || 'https://open.spotify.com'}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={currentSpotifyUrl ? 'Open current track in Spotify' : 'Open Spotify'}
-                    className="inline-flex h-7 items-center px-2 bg-[#fffdf5] border shrink-0"
-                    style={{ borderColor: theme.primaryBorder }}
-                  >
-                    <img src="./spotify-logo.svg" alt="" className="w-[100px] h-auto" style={{ imageRendering: 'auto' }} />
-                  </a>
-                ) : null}
-                <div className="flex-1 min-w-0">
-                  <PixelVisualizer isPlaying={isPlaying} reducedMotion={reducedMotion} barCount={isSpotifyConnected ? 12 : 18} />
-                </div>
+              {/* Pixel Equalizer Visualizer */}
+              <div className="pt-0.5">
+                <PixelVisualizer isPlaying={isPlaying} reducedMotion={reducedMotion} barCount={18} />
               </div>
             </div>
           </div>

@@ -1,16 +1,12 @@
 import React, { useState } from 'react';
 import { playClickSound } from '../../shared/services/soundEffects';
-import { RetroTheme } from '../../types/theme';
-import { PlayerLayoutMode } from '../../types/scale';
 
 interface RetroCapsuleWidgetProps {
-  layoutMode: PlayerLayoutMode;
-  onLayoutModeChange?: (mode: PlayerLayoutMode) => void;
   isPlaying: boolean;
   onTogglePlay: () => void;
   onNext: () => void;
   onPrevious: () => void;
-  onOpenSettings: (opener?: HTMLElement | null) => void;
+  onOpenSettings?: (opener?: HTMLElement | null) => void;
   progressMs: number;
   durationMs: number;
   seekTo?: (ms: number) => void;
@@ -18,16 +14,8 @@ interface RetroCapsuleWidgetProps {
   onVolumeChange: (vol: number) => void;
   currentTitle: string;
   currentArtist: string;
-  currentAlbum?: string;
-  albumArtUrl?: string;
-  currentSpotifyUrl?: string;
-  isSpotifyConnected: boolean;
-  onOpenSpotifyModal: (opener: HTMLElement) => void;
   onCloseWindow?: () => void;
-  onMinimizeWindow?: () => void;
-  theme: RetroTheme;
-  reducedMotion?: boolean;
-  scale?: any;
+  onExpand?: () => void;
 }
 
 function formatTime(ms: number) {
@@ -36,7 +24,6 @@ function formatTime(ms: number) {
 }
 
 export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
-  onLayoutModeChange,
   isPlaying,
   onTogglePlay,
   onNext,
@@ -50,6 +37,7 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
   currentTitle,
   currentArtist,
   onCloseWindow,
+  onExpand,
 }) => {
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
@@ -57,58 +45,64 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
   const displayTitle = currentTitle === 'NOTHING PLAYING' ? 'Lo-Fi Chill Radio' : currentTitle;
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-1.5 select-none overflow-hidden">
+    <div className="w-full h-full flex items-center justify-center select-none overflow-hidden" style={{ WebkitAppRegion: 'no-drag' as any }}>
       {/* Horizontal Pill / Capsule Container matching reference */}
       <div
-        className="relative w-[380px] h-[92px] rounded-full border-3 border-[#191244] shadow-pixel-md flex items-center px-3.5 gap-3.5 overflow-hidden transition-all duration-150 app-drag"
+        className="relative w-[380px] h-[90px] rounded-full border-3 border-[#191244] shadow-none flex items-center px-3.5 gap-3.5 overflow-hidden select-none"
         style={{
           backgroundColor: '#f2b7c6',
-          backgroundImage: 'linear-gradient(180deg, #f7c3d1 0%, #f2b7c6 50%, #e6a0b1 100%)',
-          WebkitAppRegion: 'drag' as any,
+          backgroundImage: 'linear-gradient(180deg, #f7c3d1 0%, #f2b7c6 50%, #f0a8b9 100%)',
+          WebkitAppRegion: 'no-drag' as any,
         }}
       >
         {/* Top Floating Mini Actions: Settings, Expand to Full Window, Close */}
         <div
-          className="absolute top-1.5 right-4 flex items-center gap-1.5 z-20 app-no-drag opacity-70 hover:opacity-100 transition-opacity"
+          className="absolute top-1.5 right-4 flex items-center gap-1.5 z-20 opacity-70 hover:opacity-100 transition-opacity"
           style={{ WebkitAppRegion: 'no-drag' as any }}
         >
-          <button
-            type="button"
-            onClick={(e) => {
-              playClickSound();
-              onOpenSettings(e.currentTarget);
-            }}
-            className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#191244] hover:text-white flex items-center justify-center text-[7.5px] text-[#191244] cursor-pointer transition-colors"
-            title="Settings"
-          >
-            ⚙
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              playClickSound();
-              onLayoutModeChange?.('classic');
-            }}
-            className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#191244] hover:text-white flex items-center justify-center text-[8px] text-[#191244] cursor-pointer transition-colors"
-            title="Expand to Full Player Window"
-          >
-            ⤢
-          </button>
-          <button
-            type="button"
-            onClick={onCloseWindow}
-            className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#9c2738] hover:text-white flex items-center justify-center text-[7.5px] text-[#191244] cursor-pointer transition-colors"
-            title="Hide Menu Bar Popover"
-          >
-            ✕
-          </button>
+          {onOpenSettings && (
+            <button
+              type="button"
+              onClick={(e) => {
+                playClickSound();
+                onOpenSettings(e.currentTarget);
+              }}
+              className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#191244] hover:text-white flex items-center justify-center text-[7.5px] text-[#191244] cursor-pointer transition-colors"
+              title="Settings"
+            >
+              ⚙
+            </button>
+          )}
+          {onExpand && (
+            <button
+              type="button"
+              onClick={() => {
+                playClickSound();
+                onExpand();
+              }}
+              className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#191244] hover:text-white flex items-center justify-center text-[8px] text-[#191244] cursor-pointer transition-colors"
+              title="Expand to Full Player Window"
+            >
+              ⤢
+            </button>
+          )}
+          {onCloseWindow && (
+            <button
+              type="button"
+              onClick={onCloseWindow}
+              className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#d81e35] hover:text-white flex items-center justify-center text-[7.5px] text-[#191244] cursor-pointer transition-colors"
+              title="Hide Menu Bar Popover"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         {/* Left: Spinning Vinyl Turntable */}
-        <div className="relative shrink-0 flex items-center justify-center app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
+        <div className="relative shrink-0 flex items-center justify-center">
           {/* Vinyl Record */}
           <div
-            className={`w-[68px] h-[68px] rounded-full bg-[#161619] border-2 border-[#191244] shadow-md flex items-center justify-center relative overflow-hidden ${
+            className={`w-[68px] h-[68px] rounded-full bg-[#161619] border-2 border-[#191244] shadow-none flex items-center justify-center relative overflow-hidden ${
               isPlaying ? 'animate-[spin_4s_linear_infinite]' : ''
             }`}
           >
@@ -117,8 +111,8 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
             <div className="absolute inset-3 rounded-full border border-white/10" />
             <div className="absolute inset-4.5 rounded-full border border-white/10" />
 
-            {/* Center Crimson Label */}
-            <div className="w-[24px] h-[24px] rounded-full bg-[#9c2738] border border-[#191244] flex items-center justify-center shadow-inner relative z-10">
+            {/* Center Cherry Red Label */}
+            <div className="w-[24px] h-[24px] rounded-full bg-[#d81e35] border border-[#191244] flex items-center justify-center shadow-inner relative z-10">
               {/* Spindle hole */}
               <div className="w-[6px] h-[6px] rounded-full bg-[#f2b7c6] border border-[#191244]" />
             </div>
@@ -148,7 +142,7 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
         </div>
 
         {/* Center / Right Content: Metadata, Controls, Time & Volume */}
-        <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 pr-2 app-no-drag" style={{ WebkitAppRegion: 'no-drag' as any }}>
+        <div className="flex-1 min-w-0 flex flex-col justify-center gap-1.5 pr-2">
           {/* Top Row: Artist / Title and Cursor */}
           <div className="flex items-center min-w-0 pr-8">
             <span
@@ -177,14 +171,14 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
                 ◀◀
               </button>
 
-              {/* Play / Pause Button (Crimson) */}
+              {/* Play / Pause Button (Cherry Red) */}
               <button
                 type="button"
                 onClick={() => {
                   playClickSound();
                   onTogglePlay();
                 }}
-                className="w-7 h-7 rounded-full bg-[#9c2738] hover:bg-[#851e2d] text-white border-2 border-[#191244] flex items-center justify-center font-pixel text-[8.5px] active:scale-95 transition-transform shadow-sm cursor-pointer"
+                className="w-7 h-7 rounded-full bg-[#d81e35] hover:bg-[#b81424] text-white border-2 border-[#191244] flex items-center justify-center font-pixel text-[8.5px] active:scale-95 transition-transform shadow-sm cursor-pointer"
                 title={isPlaying ? 'Pause' : 'Play'}
               >
                 {isPlaying ? '❚❚' : '▶'}
@@ -240,7 +234,7 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
                     max="100"
                     value={volume}
                     onChange={(e) => onVolumeChange(Number(e.target.value))}
-                    className="w-16 h-1.5 accent-[#9c2738] cursor-pointer"
+                    className="w-16 h-1.5 accent-[#d81e35] cursor-pointer"
                   />
                   <span className="font-pixel text-[6.5px] font-bold text-[#191244] min-w-[20px]">
                     {volume}%

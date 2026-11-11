@@ -29,6 +29,9 @@ export const PIXEL_COVERS: PixelCover[] = [
   { id: 'chrono_campfire', name: 'Chrono Campfire', type: 'gif', src: './covers/18_chrono_campfire.gif' },
   { id: 'undertale_dog', name: 'Undertale Dog', type: 'gif', src: './covers/19_undertale_dog.gif' },
   { id: 'stardew_farm', name: 'Stardew Valley', type: 'gif', src: './covers/20_stardew_farm.gif' },
+  { id: 'pastel_beach', name: 'Pastel Beach', type: 'gif', src: './covers/21_pastel_beach.gif' },
+  { id: 'cyber_butterfly', name: 'Cyber Butterfly', type: 'gif', src: './covers/22_cyber_butterfly.gif' },
+  { id: 'celestial_star', name: 'Celestial Star', type: 'gif', src: './covers/23_celestial_star.gif' },
 ];
 
 /**
