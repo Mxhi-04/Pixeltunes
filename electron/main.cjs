@@ -590,6 +590,20 @@ function buildTrayMenu() {
       ],
     },
     {
+      label: 'Window Size',
+      submenu: Object.entries(playerSizes).map(([id, { label, width, height }]) => ({
+        label: `${label} (${width} × ${height})`,
+        type: 'radio',
+        checked: playerScale === id,
+        click: () => {
+          playerScale = id;
+          applyPlayerScale(id);
+          mainWindow?.webContents.send('window:scale-changed', id);
+          showPlayer(true);
+        },
+      })),
+    },
+    {
       label: 'Keep Player on Top',
       type: 'checkbox',
       checked: isAlwaysOnTop,
