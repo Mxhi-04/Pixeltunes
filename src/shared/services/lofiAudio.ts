@@ -420,6 +420,35 @@ class LofiEngine {
       this.onStateChange();
     }
   }
+
+  /**
+   * Complete audio lifecycle teardown: releases step/playback timers,
+   * disconnects audio graph nodes, closes AudioContext, and resets state listeners.
+   */
+  public destroy() {
+    this.pause();
+    if (this.timer !== null) {
+      clearInterval(this.timer);
+      this.timer = null;
+    }
+    if (this.stepInterval !== null) {
+      clearInterval(this.stepInterval);
+      this.stepInterval = null;
+    }
+    if (this.masterGain) {
+      try { this.masterGain.disconnect(); } catch {}
+      this.masterGain = null;
+    }
+    if (this.analyser) {
+      try { this.analyser.disconnect(); } catch {}
+      this.analyser = null;
+    }
+    if (this.ctx && this.ctx.state !== 'closed') {
+      try { void this.ctx.close(); } catch {}
+      this.ctx = null;
+    }
+    this.onStateChange = null;
+  }
 }
 
 export const lofiEngine = new LofiEngine();
