@@ -485,6 +485,9 @@ function showPlayer(fromTray = false) {
   if (!mainWindow) createWindow();
   if (mainWindow.isMinimized()) mainWindow.restore();
 
+  // If menu bar capsule popover is currently visible, hide it when opening full player
+  hidePopover();
+
   // Query tray bounds so menu bar attachments and test harnesses track the active tray instance
   if (tray && typeof tray.getBounds === 'function') {
     try { tray.getBounds(); } catch { }
@@ -578,7 +581,7 @@ function buildTrayMenu() {
           },
         },
         {
-          label: 'Capsule Widget',
+          label: 'Menu Bar Capsule',
           type: 'radio',
           checked: playerLayoutMode === 'capsule',
           click: () => {
@@ -809,23 +812,6 @@ function createMenuBar() {
 
   tray.on('click', () => {
     togglePopover();
-  });
-
-  let hideTimeout = null;
-  tray.on('mouse-enter', () => {
-    if (hideTimeout) {
-      clearTimeout(hideTimeout);
-      hideTimeout = null;
-    }
-    showPopover();
-  });
-
-  tray.on('mouse-leave', () => {
-    hideTimeout = setTimeout(() => {
-      if (popoverWindow && !popoverWindow.isDestroyed() && !popoverWindow.isFocused()) {
-        hidePopover();
-      }
-    }, 400);
   });
 
   tray.on('right-click', () => {
