@@ -83,6 +83,9 @@ export const DownloadButtons: React.FC<DownloadButtonsProps> = ({
           type="button"
           onClick={() => setShowMacDropdown((v) => !v)}
           title="Choose Intel (x64) or Apple Silicon (arm64)"
+          aria-label="Choose Intel (x64) or Apple Silicon (arm64)"
+          aria-expanded={showMacDropdown}
+          aria-haspopup="true"
           className="px-3 bg-[#ffd269] hover:bg-[#ffbe42] text-[#191244] border-3 border-l-0 border-[#191244] flex items-center justify-center cursor-pointer transition-colors"
         >
           <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${showMacDropdown ? 'rotate-180' : ''}`} />
