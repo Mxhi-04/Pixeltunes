@@ -65,6 +65,16 @@ export const BUILTIN_TRACKS: BuiltinTrack[] = [
   }
 ];
 
+const PREF_PREFIX = 'pixeltunes_lofi_';
+
+function readPref(key: string): string | null {
+  try { return typeof localStorage === 'undefined' ? null : localStorage.getItem(PREF_PREFIX + key); } catch { return null; }
+}
+
+function writePref(key: string, value: string) {
+  try { localStorage.setItem(PREF_PREFIX + key, value); } catch { /* storage unavailable */ }
+}
+
 class LofiEngine {
   private ctx: AudioContext | null = null;
   private analyser: AnalyserNode | null = null;
@@ -83,7 +93,20 @@ class LofiEngine {
   private onStateChange: (() => void) | null = null;
 
   constructor() {
-    // will initialize AudioContext on user interaction
+    // AudioContext is created on user interaction; only restore saved preferences here.
+    const savedVolume = Number(readPref('volume'));
+    if (Number.isFinite(savedVolume) && savedVolume > 0 && savedVolume <= 1) this.volume = savedVolume;
+    const savedRepeat = readPref('repeat');
+    if (savedRepeat === 'off' || savedRepeat === 'track' || savedRepeat === 'context') this.repeat = savedRepeat;
+    if (readPref('shuffle') === 'on') this.setShuffle(true);
+  }
+
+  public getShuffle(): boolean {
+    return this.shuffle;
+  }
+
+  public getRepeat(): 'off' | 'track' | 'context' {
+    return this.repeat;
   }
 
   private initContext() {
@@ -154,7 +177,10 @@ class LofiEngine {
   }
 
   public setVolume(vol: number) {
-    this.volume = Math.max(0, Math.min(1, vol));
+    const next = Math.max(0, Math.min(1, vol));
+    // Mute (0) is not persisted, so a reload restores the last audible level.
+    if (next !== this.volume && next > 0) writePref('volume', String(next));
+    this.volume = next;
     if (this.masterGain && this.ctx) {
       this.masterGain.gain.setValueAtTime(this.isPlaying ? this.volume : 0, this.ctx.currentTime);
     }
@@ -193,11 +219,13 @@ class LofiEngine {
 
   public setRepeat(mode: typeof this.repeat) {
     this.repeat = mode;
+    writePref('repeat', mode);
   }
 
   public setShuffle(enabled: boolean) {
     if (this.shuffle === enabled) return;
     this.shuffle = enabled;
+    writePref('shuffle', enabled ? 'on' : 'off');
     const order = BUILTIN_TRACKS.map((_, index) => index);
     if (enabled) {
       order.splice(this.currentTrackIndex, 1);

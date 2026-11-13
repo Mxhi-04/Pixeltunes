@@ -36,7 +36,7 @@
 - 🎵 **Spotify Connect (Zero Secrets):** Client-side OAuth 2.0 PKCE flow with keychain token persistence and silent auto-refresh — control real Spotify playback across all devices without requiring backend servers.
 - 📻 **Procedural 8-Bit Web Audio Radio:** Enjoy lo-fi chip music and responsive equalizer visualizer bars out of the box with zero login required.
 - 🖥️ **Desktop and Web:** Use the macOS menu-bar player, a floating Windows window, or the browser app.
-- 🕹️ **Nostalgic 90s Desktop Aesthetic:** Double-framed retro window geometry (720×410), candy window controls, Google Pixel typography (`Press Start 2P`, `Silkscreen`, `Pixelify Sans`), and custom pixel cursors with click sparks.
+- 🕹️ **Nostalgic 90s Desktop Aesthetic:** Double-framed retro window geometry (five sizes from 480×273 Tiny, the default, up to 1152×656), candy window controls, Google Pixel typography (`Press Start 2P`, `Silkscreen`, `Pixelify Sans`), and custom pixel cursors with click sparks.
 - 📋 **Spotify Library:** The drawer opens on your playlists. Load more playlists, play one on Spotify, or switch to **Liked Songs** or **Up Next**.
 
 ---
