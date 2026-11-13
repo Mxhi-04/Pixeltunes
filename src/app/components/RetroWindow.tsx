@@ -89,9 +89,10 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   const [builtinPosition, setBuiltinPosition] = useState(0);
   const [showQueue, setShowQueue] = useState(false);
 
+  const isCompactScale = scale === 'mini' || scale === 'tiny';
   const isMiniMode = layoutMode === 'card'
-    ? (scale === 'mini' || (typeof window !== 'undefined' && window.innerWidth <= 280))
-    : scale === 'mini';
+    ? (isCompactScale || (typeof window !== 'undefined' && window.innerWidth <= 280))
+    : isCompactScale;
 
   // 7-Segment Digital Clock State (updates every second)
   const [digitalTime, setDigitalTime] = useState(getFormattedDigitalTime);
@@ -103,9 +104,10 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
     return () => clearInterval(timer);
   }, []);
 
+  // Each path plays exactly one sound: the web fallbacks (stop / toggle mini) play their own.
   const handleCloseWindow = () => {
-    playClickSound();
     if (window.electronAPI?.close) {
+      playClickSound();
       window.electronAPI.close();
     } else {
       handleStop();
@@ -113,8 +115,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   };
 
   const handleMinimizeWindow = () => {
-    playClickSound();
     if (window.electronAPI?.minimize) {
+      playClickSound();
       window.electronAPI.minimize();
     } else {
       handleToggleMini();
@@ -123,7 +125,8 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
 
   const handleToggleMini = () => {
     playClickSound();
-    const nextScale: PlayerScale = isMiniMode ? 'standard' : 'mini';
+    // Collapse always goes to the smallest size so it never enlarges the window.
+    const nextScale: PlayerScale = isMiniMode ? 'standard' : 'tiny';
     onScaleChange(nextScale);
   };
 
@@ -188,10 +191,10 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
   };
 
   const [builtinStarted, setBuiltinStarted] = useState(false);
-  const [builtinVolume, setBuiltinVolume] = useState(80);
-  const [localShuffle, setLocalShuffle] = useState(false);
-  const [localRepeat, setLocalRepeat] = useState<'off' | 'track' | 'context'>('off');
-  const localRestoreVolume = useRef(80);
+  const [builtinVolume, setBuiltinVolume] = useState(() => Math.round(lofiEngine.getVolume() * 100));
+  const [localShuffle, setLocalShuffle] = useState(() => lofiEngine.getShuffle());
+  const [localRepeat, setLocalRepeat] = useState<'off' | 'track' | 'context'>(() => lofiEngine.getRepeat());
+  const localRestoreVolume = useRef(Math.round(lofiEngine.getVolume() * 100) || 80);
   const spotifyRestoreVolume = useRef(80);
   const commandPending = useRef(false);
   const [status, setStatus] = useState('');
@@ -616,7 +619,9 @@ export const RetroWindow: React.FC<RetroWindowProps> = ({
         <div className="flex items-center gap-2">
           {/* Digital Clock - DRAGGABLE */}
           <div
-            className="text-sm font-bold text-[#191244] select-none flex items-center pointer-events-none mr-1"
+            className={`text-sm font-bold text-[#191244] select-none items-center pointer-events-none mr-1 ${
+              layoutMode === 'card' && isCompactScale ? 'hidden' : 'flex'
+            }`}
             title="Local Time (24h)"
           >
             <span

@@ -15,6 +15,8 @@ interface RetroCapsuleWidgetProps {
   currentTitle: string;
   currentArtist: string;
   onCloseWindow?: () => void;
+  /** Tooltip/accessible name for the ✕ button; defaults to what it does on this platform. */
+  closeLabel?: string;
   onExpand?: () => void;
 }
 
@@ -37,8 +39,11 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
   currentTitle,
   currentArtist,
   onCloseWindow,
+  closeLabel,
   onExpand,
 }) => {
+  const resolvedCloseLabel = closeLabel
+    ?? (typeof window !== 'undefined' && window.electronAPI ? 'Close Window' : 'Stop Playback');
   const [showVolumeSlider, setShowVolumeSlider] = useState(false);
 
   const displayArtist = currentArtist.startsWith('PRESS PLAY') ? 'PixelTunes' : currentArtist;
@@ -91,7 +96,8 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
               type="button"
               onClick={onCloseWindow}
               className="w-4 h-4 rounded-full bg-[#191244]/15 hover:bg-[#d81e35] hover:text-white flex items-center justify-center text-[7.5px] text-[#191244] cursor-pointer transition-colors"
-              title="Hide Menu Bar Popover"
+              title={resolvedCloseLabel}
+              aria-label={resolvedCloseLabel}
             >
               ✕
             </button>
@@ -147,9 +153,9 @@ export const RetroCapsuleWidget: React.FC<RetroCapsuleWidgetProps> = ({
           <div className="flex items-center min-w-0 pr-8">
             <span
               className="font-pixel text-[9.5px] font-bold text-[#191244] truncate tracking-tight"
-              title={`${displayArtist} / ${displayTitle}`}
+              title={`${displayTitle} / ${displayArtist}`}
             >
-              {displayArtist} / {displayTitle}
+              {displayTitle} / {displayArtist}
             </span>
             <span className="font-pixel text-[9.5px] font-bold text-[#191244]/80 ml-1 animate-pulse">|</span>
           </div>

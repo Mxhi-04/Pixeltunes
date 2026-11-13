@@ -107,6 +107,7 @@ export function MenuBarCapsuleView() {
         currentTitle={state.title}
         currentArtist={state.artist}
         onCloseWindow={handleClose}
+        closeLabel="Hide Menu Bar Popover"
         onExpand={handleExpand}
       />
     </div>

@@ -153,7 +153,7 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
   };
 
   // Scroll wheel navigation on click wheel
-  const handleWheelNav = (e: React.WheelEvent) => {
+  const handleWheelNav = (e: WheelEvent) => {
     e.preventDefault();
     if (e.deltaY > 0) {
       // Scroll down
@@ -173,6 +173,19 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
       }
     }
   };
+
+  // React registers wheel listeners as passive, so preventDefault() there throws.
+  // Attach a native non-passive listener that always calls the latest handler.
+  const wheelAreaRef = useRef<HTMLDivElement>(null);
+  const wheelHandlerRef = useRef(handleWheelNav);
+  wheelHandlerRef.current = handleWheelNav;
+  useEffect(() => {
+    const el = wheelAreaRef.current;
+    if (!el) return;
+    const listener = (e: WheelEvent) => wheelHandlerRef.current(e);
+    el.addEventListener('wheel', listener, { passive: false });
+    return () => el.removeEventListener('wheel', listener);
+  }, []);
 
   // LCD Backlight colors
   const lcdBg =
@@ -443,8 +456,8 @@ export const RetroIpodView: React.FC<RetroIpodViewProps> = ({
 
         {/* Click Wheel Area */}
         <div
+          ref={wheelAreaRef}
           className="w-full flex-1 flex items-center justify-center pb-3 pt-1 select-none"
-          onWheel={handleWheelNav}
         >
           {/* The Classic White Click Wheel Disc */}
           <div className="relative w-[138px] h-[138px] rounded-full bg-[#fbfbfa] border-3 border-[#191244] shadow-pixel-md flex items-center justify-center">
